@@ -3,14 +3,19 @@
  *
  * Models the glass as a convex lens whose height profile follows a squircle
  * (super-ellipse with exponent 4) — the shape Apple uses for "iOS rounded
- * rect". Refraction is computed from the surface slope at each pixel:
+ * rect". Crucially the lens is concentrated in a **bezel band** of width
+ * `thickness` at the rim; the interior is flat and optically clear. This is the
+ * defining Liquid Glass behaviour ("the centre remains relatively clear while
+ * edges show maximum displacement") — spreading the lens across the whole
+ * surface instead reads like a uniform magnifier. Refraction is computed from
+ * the surface slope at each pixel:
  *
- *   r        = 1 - edgeDist/maxDepth                        (0 at centre, 1 at rim)
+ *   r        = 1 - edgeDist/band                            (0 at bezel inner, 1 at rim)
  *   slope(r) = r³ / (1 - r⁴)^(3/4)                          (squircle derivative)
  *   bump     = min(1, slope * k)                            (capped for sampling)
  *
- * The result is **flat in the centre and spikes sharply at the rim** —
- * matching what a real convex lens does and what iOS/Figma show.
+ * The result is **flat/clear in the centre and spikes sharply at the rim** —
+ * matching what Apple's iOS 26 Liquid Glass shows.
  *
  * Direction is INWARD (toward the shape centre perpendicular to nearest edge),
  * so the lens magnifies the backdrop.
@@ -77,23 +82,55 @@ export function generateDisplacementMap(
   const halfW = w / 2;
   const halfH = h / 2;
 
-  const sdf = (x: number, y: number): number => {
-    const qx = Math.abs(x - cx) - (halfW - r);
-    const qy = Math.abs(y - cy) - (halfH - r);
-    const inside = Math.min(Math.max(qx, qy), 0);
-    const ox = Math.max(qx, 0);
-    const oy = Math.max(qy, 0);
-    const outside = Math.sqrt(ox * ox + oy * oy);
-    return inside + outside - r;
-  };
-
   const maxDepth = Math.min(halfW, halfH);
-  const eps = 0.75;
+  const innerW = halfW - r;
+  const innerH = halfH - r;
+
+  // Lensing band: the refraction lives within `thickness` px of the rim, then
+  // the surface goes flat (clear centre). Capped at the short half-side so small
+  // controls (where the bezel is the whole thing) still resolve.
+  const band = Math.min(maxDepth, Math.max(1, params.thickness * dpr));
+
+  // Below this rNorm the squircle slope is so small that bump·127 rounds to 0,
+  // i.e. the encoded displacement is exactly neutral (128). For a rounded-rect
+  // that's the whole deep interior — skipping it drops the slope+normal math
+  // for the bulk of a large panel with byte-identical output. (rNorm 0.19 is
+  // where bump·127 first reaches 0.5; 0.18 keeps a safe margin.)
+  const SKIP_RNORM = 0.18;
 
   for (let y = 0; y < totalH; y++) {
+    const dy = y + 0.5 - cy;
+    const ady = dy < 0 ? -dy : dy;
+    const rowBase = y * totalW * 4;
+
+    // Whole row sits beyond the shape's vertical extent → all neutral, no
+    // alpha. Skips the SDF sqrt for every top/bottom padding row.
+    if (ady >= halfH) {
+      for (let x = 0; x < totalW; x++) {
+        const i = rowBase + x * 4;
+        data[i] = 128;
+        data[i + 1] = 128;
+        data[i + 2] = 128;
+        data[i + 3] = 0;
+      }
+      continue;
+    }
+
+    const qy = ady - innerH;
+    const sy = dy < 0 ? -1 : 1;
+
     for (let x = 0; x < totalW; x++) {
-      const i = (y * totalW + x) * 4;
-      const d = sdf(x + 0.5, y + 0.5);
+      const i = rowBase + x * 4;
+      const dx = x + 0.5 - cx;
+      const adx = dx < 0 ? -dx : dx;
+      const qx = adx - innerW;
+
+      // Rounded-rect SDF, inlined so qx/qy/ox/oy feed the analytic gradient too.
+      const inside = (qx > qy ? qx : qy) < 0 ? (qx > qy ? qx : qy) : 0;
+      const ox = qx > 0 ? qx : 0;
+      const oy = qy > 0 ? qy : 0;
+      const outside = ox || oy ? Math.sqrt(ox * ox + oy * oy) : 0;
+      const d = inside + outside - r;
 
       if (d >= 0) {
         // Outside the shape — neutral, no displacement, no alpha.
@@ -105,34 +142,58 @@ export function generateDisplacementMap(
       }
 
       const edge = -d;
-      const rNorm = 1 - Math.min(1, edge / maxDepth); // 0 centre → 1 rim
+      const rNorm = edge >= band ? 0 : 1 - edge / band; // 0 at bezel inner → 1 at rim
 
-      // Squircle convex-lens slope. Spikes near rNorm=1; clamped to keep
-      // sampling sane. The 0.55 multiplier sets where bump first saturates;
-      // tweak to control how aggressive the rim spike feels.
-      const x4 = rNorm * rNorm * rNorm * rNorm;
-      const denom = Math.max(0.01, 1 - x4);
-      const slope = (rNorm * rNorm * rNorm) / Math.pow(denom, 0.75);
-      const bump = Math.min(1, slope * 0.55);
+      if (rNorm < SKIP_RNORM) {
+        // Deep interior — encodes to neutral but is part of the shape.
+        data[i] = 128;
+        data[i + 1] = 128;
+        data[i + 2] = 128;
+        data[i + 3] = 255;
+        continue;
+      }
 
-      // Outward normal from SDF gradient.
-      const nx = sdf(x + eps, y) - sdf(x - eps, y);
-      const ny = sdf(x, y + eps) - sdf(x, y - eps);
-      const nlen = Math.sqrt(nx * nx + ny * ny) || 1;
-      const normX = nx / nlen;
-      const normY = ny / nlen;
+      // Squircle convex-lens slope: rNorm³ / (1 − rNorm⁴)^0.75. The 0.55
+      // multiplier sets where bump first saturates. (1 − rNorm⁴)^0.75 is
+      // computed as √·⁴√ — exact and far cheaper than Math.pow per pixel.
+      const r2 = rNorm * rNorm;
+      const r3 = r2 * rNorm;
+      const denom = 1 - r2 * r2;
+      const s = Math.sqrt(denom);
+      const slope = r3 / (s * Math.sqrt(s));
+      const bump = slope * 0.55 < 1 ? slope * 0.55 : 1;
+
+      // Outward unit normal = analytic SDF gradient, replacing four
+      // finite-difference sdf() samples per pixel.
+      const sx = dx < 0 ? -1 : 1;
+      let normX: number;
+      let normY: number;
+      if (ox || oy) {
+        // Rounded corner: points radially out of the arc centre.
+        const olen = outside || 1;
+        normX = (ox / olen) * sx;
+        normY = (oy / olen) * sy;
+      } else {
+        // Straight bands. On the medial diagonal (qx≈qy) the nearest edge is
+        // ambiguous; blend the two axis normals across a ±0.75px band so the
+        // corner diagonals stay seamless — this reproduces the original
+        // finite-difference normal (eps=0.75) instead of a hard axis switch.
+        const e = 0.75;
+        let mx = qx - qy + e;
+        mx = mx < 0 ? 0 : mx > 2 * e ? 2 * e : mx;
+        let my = qy - qx + e;
+        my = my < 0 ? 0 : my > 2 * e ? 2 * e : my;
+        const nl = Math.sqrt(mx * mx + my * my) || 1;
+        normX = (mx / nl) * sx;
+        normY = (my / nl) * sy;
+      }
 
       // INWARD direction = sample backdrop from closer to shape centre.
       // With <feDisplacementMap scale = 2 × refraction> this lifts the
-      // interior into the rim band → magnification.
-      const dispX = -bump * normX;
-      const dispY = -bump * normY;
-
-      const enc = (v: number) =>
-        Math.max(0, Math.min(255, Math.round(128 + v * 127)));
-
-      data[i] = enc(dispX);
-      data[i + 1] = enc(dispY);
+      // interior into the rim band → magnification. |disp| ≤ bump ≤ 1, so
+      // 128 + disp·127 always lands in [1, 255] — no clamp needed.
+      data[i] = Math.round(128 - bump * normX * 127);
+      data[i + 1] = Math.round(128 - bump * normY * 127);
       data[i + 2] = 128;
       data[i + 3] = 255;
     }

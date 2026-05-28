@@ -16,24 +16,37 @@
  * before the specular pass.
  */
 
-let sharedSvg: SVGSVGElement | null = null;
-let sharedDefs: SVGDefsElement | null = null;
 let filterCounter = 0;
 
-function ensureDefs(): SVGDefsElement {
-  if (sharedDefs && sharedDefs.isConnected) return sharedDefs;
+/**
+ * One <svg><defs> per tree scope. A glass element inside a Shadow DOM (every
+ * Chrome-extension content script) needs its filter in the SAME shadow root,
+ * because `backdrop-filter: url(#id)` resolves the fragment against the
+ * element's own tree scope — a filter in document.body is invisible to it.
+ */
+const defsByRoot = new WeakMap<Document | ShadowRoot, SVGDefsElement>();
 
-  const SVG_NS = 'http://www.w3.org/2000/svg';
-  sharedSvg = document.createElementNS(SVG_NS, 'svg');
-  sharedSvg.setAttribute('aria-hidden', 'true');
-  sharedSvg.setAttribute('width', '0');
-  sharedSvg.setAttribute('height', '0');
-  sharedSvg.style.cssText =
+function ensureDefs(root: Document | ShadowRoot): SVGDefsElement {
+  const existing = defsByRoot.get(root);
+  if (existing && existing.isConnected) return existing;
+
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('width', '0');
+  svg.setAttribute('height', '0');
+  svg.style.cssText =
     'position:absolute;width:0;height:0;overflow:hidden;pointer-events:none;';
-  sharedDefs = document.createElementNS(SVG_NS, 'defs');
-  sharedSvg.appendChild(sharedDefs);
-  document.body.appendChild(sharedSvg);
-  return sharedDefs;
+  const defs = document.createElementNS(ns, 'defs');
+  svg.appendChild(defs);
+
+  // Append into the shadow root directly, or document.body for the main tree.
+  const container: ParentNode =
+    root.nodeType === 9 ? (root as Document).body ?? root : root;
+  container.appendChild(svg);
+
+  defsByRoot.set(root, defs);
+  return defs;
 }
 
 export interface FilterParams {
@@ -47,6 +60,8 @@ export interface FilterParams {
   /** Padding (CSS px) baked into the displacement map's canvas, per side. */
   displacementPadding: number;
   specularMapUrl: string | null;
+  /** Tree scope (document or shadow root) to inject the shared <svg defs> into. */
+  root: Document | ShadowRoot;
 }
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -65,7 +80,7 @@ export class FilterChain {
   private readonly chromaticEnabled: boolean;
 
   constructor(initial: FilterParams) {
-    this.defs = ensureDefs();
+    this.defs = ensureDefs(initial.root);
     this.id = `lg-filter-${++filterCounter}`;
     this.chromaticEnabled = initial.chromaticAberration > 0.001;
 
