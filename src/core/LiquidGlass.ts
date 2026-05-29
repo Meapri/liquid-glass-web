@@ -49,9 +49,9 @@ const VARIANT_TINT: Record<LiquidGlassVariant, { light: string; dark: string }> 
  * `tinted` a touch more frosted. Explicit `blur` always wins.
  */
 const VARIANT_BLUR: Record<LiquidGlassVariant, number> = {
-  regular: 4,
-  clear: 2,
-  tinted: 8,
+  regular: 20, // Apple Liquid Glass standard
+  clear: 8,    // Less frosted for bold media
+  tinted: 24,  // Extra frosted
 };
 
 /**
@@ -75,16 +75,16 @@ const EDGE_SHADOW_DARK =
   '0 1px 4px rgba(0, 0, 0, 0.15)';
 
 const DEFAULT_OPTIONS: ResolvedOptions = {
-  radius: 24,
-  thickness: 48,
-  refraction: 80, // High refraction for strong Apple spatial effect
+  radius: 22, // Apple's standard corner radius
+  thickness: 40, // Bevel depth
+  refraction: 60, // Balanced with hybrid Snell + direct normal formula
   chromaticAberration: 0.03,
-  blur: 8, // Higher blur for silky smooth diffusion
-  saturation: 180, // High saturation for vibrant colors
+  blur: 20, // Apple Liquid Glass standard: backdrop-filter blur(20px)
+  saturation: 180, // Apple Liquid Glass standard: saturate(180%)
   variant: 'regular',
   scheme: 'auto',
   tint: null,
-  specular: true, // Restored the well-calculated Canvas 2D specular light
+  specular: true,
   specularIntensity: 1.0,
   edges: true,
   applyRadius: true,
@@ -93,7 +93,7 @@ const DEFAULT_OPTIONS: ResolvedOptions = {
   lazy: false,
   lazyMargin: '200px',
   root: null,
-  fallbackFilter: 'blur(12px) saturate(1.6)',
+  fallbackFilter: 'blur(20px) saturate(1.8)',
   respectReducedMotion: true,
 };
 

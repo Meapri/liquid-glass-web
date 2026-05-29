@@ -1,8 +1,12 @@
 /**
- * Physically-based refraction displacement map (Snell's law) via GLSL Port.
+ * Hybrid Refraction Engine — "Hacky Dome" × Snell's Law
  *
- * Implements exact 3D optic rendering for Apple Liquid Glass:
- *   SDF -> height field (h) -> normal (N) -> refract(I, N, 1/IOR) -> UV displacement
+ * Height field:  h(x,y) = bevelWidth · fade(sdf) + strength · dome(x,y) · fade(sdf)
+ *   where fade(d) = d / (d + k)          — C∞-smooth rational edge transition
+ *         dome    = (1 - u²)(1 - v²)     — "hacky" bivariate paraboloid (no X-crease)
+ *
+ * Normals are computed via closed-form chain-rule derivatives (zero finite-difference),
+ * then fed into GLSL-style refract(I, N, η) for physically correct Snell's law bending.
  */
 
 export interface DisplacementMapParams {
@@ -28,7 +32,7 @@ export function generateDisplacementMap(
   const w = Math.max(1, Math.round(params.width * dpr));
   const h = Math.max(1, Math.round(params.height * dpr));
   const r = Math.max(0, Math.min(Math.min(w, h) / 2, params.radius * dpr));
-  
+
   const paddingCss = Math.max(8, Math.ceil(params.refraction));
   const pad = Math.ceil(paddingCss * dpr);
 
@@ -53,117 +57,147 @@ export function generateDisplacementMap(
   const img = ctx.createImageData(totalW, totalH);
   const data = img.data;
 
+  // ─── Geometry ───
   const cx = pad + w / 2;
   const cy = pad + h / 2;
   const halfW = w / 2;
   const halfH = h / 2;
   const innerW = Math.max(0, halfW - r);
   const innerH = Math.max(0, halfH - r);
-  
+
   const maxDepth = Math.min(halfW, halfH);
   const bevelWidth = Math.min(maxDepth, Math.max(2, params.thickness * dpr));
 
-  // Exact SDF inside distance
-  function getInside(x: number, y: number): number {
-    const adx = Math.abs(x - cx);
-    const ady = Math.abs(y - cy);
-    const qx = adx - innerW;
-    const qy = ady - innerH;
+  // ─── Hybrid Formula Constants ───
+  const globalStrength = maxDepth * 1.2;
+  const kFade = Math.max(1.0, bevelWidth * 0.35);
+  const eta = 1.0 / 1.45; // Glass IOR
+  const etaSq = eta * eta;
+  const directAmp = 0.6; // Apple-style direct normal amplification for dome interior
 
-    if (qx > 0 && qy > 0) {
-      const dist = Math.sqrt(qx * qx + qy * qy);
-      return r - dist;
-    }
-    
-    return Math.min(halfW - adx, halfH - ady);
-  }
+  // ─── Precomputed reciprocals for dome derivatives ───
+  const invHalfW = 1.0 / halfW;
+  const invHalfH = 1.0 / halfH;
 
-  // Global Magnification Constants
-  const globalStrength = maxDepth * 0.6;
-  const k = Math.max(1.0, bevelWidth * 0.35); // Controls the steepness of the edge
-
-  // Ultra-fast Rational Bevel + Bivariate Paraboloid Dome
-  // ZERO branches, NO Math.pow, PERFECTLY smooth (C-infinity), NO separation lines!
-  function getH(px: number, py: number, inside: number): number {
-    if (inside <= 0) return 0;
-    
-    // Asymptotic rational fade: 0 at edge, approaches 1 at center.
-    const fade = inside / (inside + k);
-    
-    // 1. Apple-like steep edge refraction
-    const bevel = bevelWidth * fade;
-    
-    // 2. Gentle center dome (No X creases)
-    const u = (px - cx) / halfW;
-    const v = (py - cy) / halfH;
-    const dome = globalStrength * (1.0 - u * u) * (1.0 - v * v);
-    
-    // Multiply dome by fade to perfectly zero out at the corners, preventing jaggies.
-    return bevel + dome * fade;
-  }
-
-  const eta = 1.0 / 1.45; // IOR for glass
-  const strengthMult = 1.0; 
-
+  // ─── Main Rendering Loop ───
   for (let y = 0; y < totalH; y++) {
     const rowBase = y * totalW * 4;
     const py = y + 0.5;
-
-    // Sliding Window: pre-calculate the very first 'right' point of the row
-    let prevHx = getH(0.5, py, getInside(0.5, py));
 
     for (let x = 0; x < totalW; x++) {
       const px = x + 0.5;
       const i = rowBase + x * 4;
 
-      const inside0 = getInside(px, py);
-      if (inside0 <= 0) {
+      // ─── 1. Inline Rounded-Rect SDF + Analytical Gradient ───
+      const dxC = px - cx;
+      const dyC = py - cy;
+      const adx = Math.abs(dxC);
+      const ady = Math.abs(dyC);
+      const sx = dxC >= 0 ? 1.0 : -1.0;
+      const sy = dyC >= 0 ? 1.0 : -1.0;
+
+      const qx = adx - innerW;
+      const qy = ady - innerH;
+
+      let inside: number;
+      let dIdx: number; // ∂(inside)/∂x
+      let dIdy: number; // ∂(inside)/∂y
+
+      if (qx > 0 && qy > 0) {
+        // Corner arc — gradient points radially inward
+        const dist = Math.sqrt(qx * qx + qy * qy);
+        inside = r - dist;
+        const invD = dist > 0.001 ? 1.0 / dist : 0;
+        dIdx = -sx * qx * invD;
+        dIdy = -sy * qy * invD;
+      } else if (halfW - adx < halfH - ady) {
+        // Closer to left/right edge
+        inside = halfW - adx;
+        dIdx = -sx;
+        dIdy = 0;
+      } else {
+        // Closer to top/bottom edge
+        inside = halfH - ady;
+        dIdx = 0;
+        dIdy = -sy;
+      }
+
+      if (inside <= 0) {
         data[i] = 128;
         data[i + 1] = 128;
         data[i + 2] = 128;
         data[i + 3] = 255;
-        // Keep window updated
-        prevHx = getH(px + 1.5, py, getInside(px + 1.5, py));
         continue;
       }
 
-      // 1. Sliding Window Optimization (33% fewer getH calls)
-      const h0 = prevHx;
-      const hx = getH(px + 1.5, py, getInside(px + 1.5, py));
-      const hy = getH(px, py + 1.5, getInside(px, py + 1.5));
-      prevHx = hx; // Shift window rightwards
+      // ─── 2. Rational Fade: f(d) = d/(d+k), f'(d) = k/(d+k)² ───
+      const ipk = inside + kFade;
+      const fade = inside / ipk;
+      const dFdI = kFade / (ipk * ipk);
 
-      const dHdx = hx - h0;
-      const dHdy = hy - h0;
+      // ─── 3. "Hacky" Bivariate Paraboloid Dome ───
+      const u = dxC * invHalfW;
+      const v = dyC * invHalfH;
+      const uu = u * u;
+      const vv = v * v;
+      const dome = (1.0 - uu) * (1.0 - vv);
 
-      // 2. Normal vector N = normalize(-dHdx, -dHdy, 1.0)
+      // ─── 4. Analytical Height Gradient (Chain Rule) ───
+      // h = bevelWidth·fade + globalStrength·dome·fade
+      // ∂h/∂x = (bevelWidth + globalStrength·dome) · ∂fade/∂x  +  globalStrength · ∂dome/∂x · fade
+      const dFdx = dFdI * dIdx;
+      const dFdy = dFdI * dIdy;
+      const fadeCoeff = bevelWidth + globalStrength * dome;
+      const dDdx = -2.0 * u * invHalfW * (1.0 - vv);
+      const dDdy = -2.0 * v * invHalfH * (1.0 - uu);
+      const dHdx = fadeCoeff * dFdx + globalStrength * dDdx * fade;
+      const dHdy = fadeCoeff * dFdy + globalStrength * dDdy * fade;
+
+      // ─── 5. Surface Normal ───
       const len = Math.sqrt(dHdx * dHdx + dHdy * dHdy + 1.0);
       const N0 = -dHdx / len;
       const N1 = -dHdy / len;
       const N2 = 1.0 / len;
 
-      // 3. GLSL refract(I, N, eta) where I = (0, 0, -1)
-      const cosi = -N2;
-      const k = 1.0 - eta * eta * (1.0 - N2 * N2);
-      
-      let finalX = 0;
-      let finalY = 0;
-      
-      if (k >= 0) {
-        const b = eta * (-N2) + Math.sqrt(k);
-        const T0 = -b * N0;
-        const T1 = -b * N1;
-        const T2 = -eta - b * N2;
-        
-        // 4. UV offset
-        const tz = Math.max(Math.abs(T2), 0.1);
-        finalX = (T0 / tz) * strengthMult;
-        finalY = (T1 / tz) * strengthMult;
+      // ─── 6. Hybrid Refraction: Snell's Law × Direct Normal Mapping ───
+      //
+      // Pure Snell's law gives near-zero displacement in the flat dome center
+      // because the normals are almost vertical (N ≈ (0,0,1)).
+      // Apple's Liquid Glass uses amplified normal-based displacement everywhere
+      // to create the characteristic "magnifying glass" look.
+      //
+      // Our hybrid: blend Snell's law (physically correct at steep edges) with
+      // direct normal displacement (visually strong at shallow dome center).
+
+      // A) Snell's Law for edge bevel
+      const kRefr = 1.0 - etaSq * (1.0 - N2 * N2);
+      let snellX = 0;
+      let snellY = 0;
+      if (kRefr >= 0) {
+        const b = eta * (-N2) + Math.sqrt(kRefr);
+        snellX = -b * N0;
+        snellY = -b * N1;
+        const tz = Math.max(Math.abs(-eta - b * N2), 0.1);
+        snellX /= tz;
+        snellY /= tz;
       }
 
-      // Encode into RGBA 
-      // Multiplier of 127 fits perfectly as |T.xy/T.z| <= ~0.95 for IOR 1.45
-      data[i] = Math.max(1, Math.min(255, Math.round(128 + finalX * 127)));
+      // B) Direct Normal Mapping for dome interior (Apple-style amplification)
+      // N0, N1 are the XY components of the surface normal — directly proportional
+      // to surface slope. Multiplying by a strength factor gives controllable
+      // displacement that works even on very gentle slopes.
+      const directX = N0 * directAmp;
+      const directY = N1 * directAmp;
+
+      // C) Blend: edge region uses Snell, interior uses direct normal mapping.
+      // fade goes 0→1 from edge to center, so we crossfade smoothly.
+      const edgeness = 1.0 - fade; // 1 at edge, 0 at center
+      const ee = edgeness * edgeness; // Sharpen the transition
+      const finalX = snellX * ee + directX * (1.0 - ee);
+      const finalY = snellY * ee + directY * (1.0 - ee);
+
+      // Encode displacement into RGBA (128 = neutral, ±127 = max offset)
+      data[i]     = Math.max(1, Math.min(255, Math.round(128 + finalX * 127)));
       data[i + 1] = Math.max(1, Math.min(255, Math.round(128 + finalY * 127)));
       data[i + 2] = 128;
       data[i + 3] = 255;
@@ -174,7 +208,7 @@ export function generateDisplacementMap(
 
   const url =
     canvas instanceof HTMLCanvasElement
-      ? canvas.toDataURL('image/webp', 1.0) // Lossless WebP is faster/smaller
+      ? canvas.toDataURL('image/webp', 1.0)
       : offscreenToDataURL(canvas as OffscreenCanvas);
 
   return {
