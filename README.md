@@ -8,28 +8,52 @@ is composited by the browser GPU pipeline.
 
 ## Approach
 
-- **Physically-based refraction** (Snell's law) displacement map, the way Apple's
-  Liquid Glass works: a convex-squircle bevel surface `h = ⁴√(1 − (1 − x)⁴)` over
-  a rim band of width `thickness`; the surface normal is the analytic SDF
-  gradient (perpendicular to the nearest edge); a straight-down ray refracts
-  through it (glass n = 1.5) and the lateral shift `sin(θ₁ − θ₂)` is the
-  displacement (precomputed as a 1-D Snell lookup). The bend lives in the rim
-  band — the **centre stays optically clear** — so the gradient's medial seam
-  sits in the cleared centre and never shows (no diagonal "X"). Strong refraction
-  over text stays clean because the backdrop is blurred *before* it's bent.
+- **Edge-concentrated lensing** (Snell's law), the way Apple describes Liquid
+  Glass — it *"dynamically bends, shapes, and concentrates light in real time"*
+  with *"responsive lensing along its edges"* (Meet Liquid Glass, WWDC25). The
+  rim is a **convex roundover** — a quarter-ellipse `h = B·√(1 − (1 − t)²)` over a
+  band of width `thickness`, near-vertical at the very edge and flat on the
+  interior plateau. We take that surface normal and refract a straight-down
+  viewing ray through the air→glass interface (n = 1.5) with the GLSL `refract()`
+  formula; the lateral shift is the displacement. The surface is **one smooth
+  lens**, not a rim band: the displacement increases *monotonically* from zero at
+  the exact centre to its maximum at the edge (a C∞ `(1−u²)(1−v²)` field shaped
+  by an exponent so the middle stays nearly flat — "letting content shine through
+  underneath it" — and the bend ramps up only near the rim). Because it is
+  monotonic there is **no inner ring**: nowhere does the bend stop, so no rounded
+  rectangle is ever drawn inside the glass. Smooth everywhere ⇒ no diagonal "X"
+  crease on any shape. The map is padded so the rim can sample backdrop beyond
+  the box ("samples content from an area larger than itself"); the backdrop is
+  blurred *before* it's bent so refraction over text stays clean.
 - **Padded displacement canvas** (`±refraction` px on each side) so the rim
   can sample real backdrop beyond the element box without clipping.
 - **Three-pass chromatic aberration** — R / G / B channels run through
   feDisplacementMap at slightly different scales (blue refracts more than red,
   matching glass physics).
-- **Baked specular rim** PNG (lit top-left edge + a subtle bottom-right lip for
-  thickness), screen-blended inside the filter — no per-frame JS.
-- **Engine-owned edge treatment** — a scheme-aware `box-shadow` stack: a crisp
-  defined rim around the whole perimeter (the "droplet outline" that gives the
-  glass its dimensional edge), a brighter top lip, a faint bottom lip and a soft
-  cool float shadow — so a bare element reads as Liquid Glass with no extra CSS.
-  A clean 1px rim like Apple's Control Center, not a glossy bevel.
-- **Spatial UI & iOS 26 Animations** — Bundled `.lg-interactive` classes that automatically provide physics-based 3D Parallax Tilt, Dynamic Spotlight Glare that tracks the pointer over the 1px edge, and organic "Jelly Squish" morphing on click (`scale3d(1.03, 0.92, 1)`).
+- **Geometry-driven specular rim** PNG — Apple's *"highlights that respond to
+  geometry … causing light to travel around the material, defining its
+  silhouette."* Computed from the exact rounded-rect edge (SDF) in a thin rim
+  band: a bright primary arc where the edge faces the key light (top), a thin
+  continuous highlight tracing the whole silhouette, and a soft secondary catch
+  on the opposite edge. Screen-blended inside the filter — no per-frame JS. It
+  hugs the crisp edge so the glass reads as a defined shape, while the refraction
+  lens stays a smooth bend — the clear interior emits no light.
+- **Flat edge treatment** — a single faint scheme-aware hairline (`inset 0 0 0
+  0.5px`) so the edge still reads over flat backdrops. No drop shadow and no
+  inner top-lip glow — those make the glass look like a raised, embossed button;
+  Liquid Glass sits flush *on* the content. The dimensional edge is carried
+  optically by the lensing + the crisp specular line, not by a drawn bevel.
+- **Pointer-tracked edge light (core, all glass)** — Apple's environment light
+  "travels around the material, defining its silhouette" and reacts as you
+  approach. A single shared `PointerField` (one rAF-coalesced `pointermove`)
+  feeds every glass element `--lg-pointer-x/y` plus a proximity `--lg-glow`;
+  `.liquid-glass::after` paints a crisp bright segment of the rim that follows
+  the cursor and **fades in by distance** (it lights up from ~220px away, not
+  only on direct hover), masked to a 1.5px border so only the edge lights up.
+  `.lg-interactive` adds 3D parallax tilt + a "jelly squish" press on top.
+- **Tasteful depth** — a soft, diffuse cool float shadow and a gentle inner top
+  sheen give the glass volume (a lozenge floating above content), without the
+  hard embossed look of a raised button.
 - **Shared `MapCache`** keyed by `(w, h, radius, thickness, dpr)` — same-sized
   elements reuse the same data URLs.
 
@@ -43,16 +67,15 @@ npm run dev   # demo at http://localhost:5173
 ```ts
 import { LiquidGlass, LiquidInteractive } from './src';
 
-// Initialize core refraction engine
+// Initialize core refraction engine (Apple-standard defaults shown)
 new LiquidGlass(document.querySelector('.tab-bar')!, {
   radius: 'pill',
-  refraction: 18,
-  chromaticAberration: 0.4,
-  blur: 4,
+  thickness: 30,    // lens depth
+  refraction: 44,   // edge lensing strength
   variant: 'regular',
 });
 
-// Auto-bind 3D Spatial Interactions (Parallax, Edge Glare, Jelly Squish)
+// Auto-bind the pointer-tracked edge light (+ parallax tilt, jelly press)
 LiquidInteractive.initAll();
 ```
 
@@ -61,16 +84,16 @@ LiquidInteractive.initAll();
 | option | default | meaning |
 | --- | --- | --- |
 | `radius` | `'auto'` | px, `'pill'`, or `'auto'` (reads computed border-radius) |
-| `thickness` | `58` | width of the refraction **bevel band** at the rim, in px (auto-capped to 28% of the short side; also the specular rim band) |
-| `refraction` | `95` | max inward displacement at the rim, in px — overall refraction strength (auto-capped to 65% of the short side so small controls stay coherent) |
-| `chromaticAberration` | `0.22` | 0–1; subtle RGB fringing at the rim (kept low so the body stays clean) |
-| `blur` | per-variant | backdrop frost stdDeviation, applied before refraction; default by variant (`regular` 4, `clear` 2, `tinted` 6) |
-| `saturation` | `145` | % saturation applied after displacement (Apple keeps the backdrop close to neutral, not over-vivid) |
+| `thickness` | `30` | lens depth (glass "thickness") in px — deeper ⇒ more pronounced edge lensing (Apple: thicker material lenses more). Scales the dome depth. |
+| `refraction` | `44` | max edge displacement in px — overall lensing strength (auto-capped to ½ the short side so small controls stay coherent) |
+| `chromaticAberration` | `0.03` | 0–1; subtle RGB fringing at the rim (kept low so the body stays clean) |
+| `blur` | per-variant | backdrop frost stdDeviation, applied before refraction; default by variant (`regular` 10, `clear` 3, `tinted` 14). Auto-capped to ~14% of the short side so thin bars/toolbars aren't over-frosted (an absolute blur looks far stronger on a 52px nav than a 200px panel). |
+| `saturation` | `150` | % saturation applied after displacement (Apple keeps the backdrop close to neutral, not over-vivid) |
 | `variant` | `'regular'` | `'regular'` (frosted, legible) \| `'clear'` (most transparent, for bold content) \| `'tinted'` — sets tint and the default frost |
 | `scheme` | `'auto'` | `'light'` \| `'dark'` \| `'auto'` |
 | `tint` | — | explicit CSS color, overrides variant |
-| `specular` | `true` | bake the rim specular highlight |
-| `specularIntensity` | `0.85` | 0–1 |
+| `specular` | `true` | bake the geometry-driven edge light |
+| `specularIntensity` | `0.5` | 0–1 |
 | `edges` | `true` | inline glass edge treatment (scheme-aware): bright rim hairline, inner top glow, bottom lip, soft float shadow. `false` to style `box-shadow` yourself |
 | `mapPixelRatio` | `2` | DPR cap for the generated maps |
 | `quality` | `'auto'` | `'high'` \| `'balanced'` \| `'low'` \| `'auto'` — gates the expensive bits (see below) |
@@ -160,11 +183,16 @@ default) automatically.
 
 ## References
 
-- [rizroze/liquid-glass](https://github.com/rizroze/liquid-glass) — gradient-based
-  displacement map, R/B channels
-- [Liquid Glass in the Browser (kube.io)](https://kube.io/blog/liquid-glass-css-svg/)
-  — Snell's law + squircle surface derivation
-- [Apple Liquid Glass Design Gallery](https://developer.apple.com/design/new-design-gallery-2026/)
+The optical model here is taken **only from Apple's official material** — the
+lensing, geometry-driven highlights, edge behaviour and Regular/Clear variants
+are reproduced from these sources:
+
+- [Meet Liquid Glass — WWDC25](https://developer.apple.com/videos/play/wwdc2025/219/)
+  — the canonical description of lensing, environment lighting, silhouette
+  highlights, adaptive shadow and the Regular/Clear variants
+- [Liquid Glass — Technology Overviews](https://developer.apple.com/documentation/technologyoverviews/liquid-glass)
+- [Adopting Liquid Glass — Technology Overviews](https://developer.apple.com/documentation/technologyoverviews/adopting-liquid-glass)
+- [Materials — Human Interface Guidelines](https://developer.apple.com/design/human-interface-guidelines/materials)
 
 ## License
 

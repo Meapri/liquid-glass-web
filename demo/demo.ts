@@ -28,11 +28,11 @@ const target = document.getElementById('lg-play') as HTMLDivElement | null;
 if (target) {
   const playGlass = new LiquidGlass(target, {
     radius: 36,
-    thickness: 40,
-    refraction: 60,
-    blur: 20,
-    saturation: 180,
-    specularIntensity: 1.0,
+    thickness: 44,
+    refraction: 46,
+    blur: 10,
+    saturation: 150,
+    specularIntensity: 0.5,
     variant: 'regular',
   });
   instances.set(target, playGlass);

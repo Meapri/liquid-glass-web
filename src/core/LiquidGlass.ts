@@ -24,19 +24,20 @@
 import type { LiquidGlassOptions, ResolvedOptions, LiquidGlassQuality, LiquidGlassVariant } from './types';
 import { FilterChain } from './FilterChain';
 import { getDisplacementMap, getSpecularMap } from './MapCache';
+import { registerPointerLight, unregisterPointerLight } from './PointerField';
 
 const VARIANT_TINT: Record<LiquidGlassVariant, { light: string; dark: string }> = {
   regular: {
-    light: 'rgba(255, 255, 255, 0.25)', // Slightly more opaque white for standard Apple frosted glass
-    dark: 'rgba(0, 0, 0, 0.25)',        // Standard Apple dark glass
+    light: 'rgba(255, 255, 255, 0.12)', // light, transparent — content shines through
+    dark: 'rgba(0, 0, 0, 0.18)',
   },
   clear: {
-    light: 'rgba(255, 255, 255, 0.05)',
-    dark: 'rgba(0, 0, 0, 0.05)',
+    light: 'rgba(255, 255, 255, 0.04)',
+    dark: 'rgba(0, 0, 0, 0.04)',
   },
   tinted: {
-    light: 'rgba(255, 255, 255, 0.5)',
-    dark: 'rgba(30, 30, 36, 0.5)',
+    light: 'rgba(255, 255, 255, 0.32)',
+    dark: 'rgba(30, 30, 36, 0.42)',
   },
 };
 
@@ -49,43 +50,41 @@ const VARIANT_TINT: Record<LiquidGlassVariant, { light: string; dark: string }> 
  * `tinted` a touch more frosted. Explicit `blur` always wins.
  */
 const VARIANT_BLUR: Record<LiquidGlassVariant, number> = {
-  regular: 20, // Apple Liquid Glass standard
-  clear: 8,    // Less frosted for bold media
-  tinted: 24,  // Extra frosted
+  regular: 10, // Apple Regular: enough frost for legibility, still see-through
+  clear: 3,    // near-transparent for bold media
+  tinted: 14,
 };
 
 /**
- * The glass edge treatment, layered as one box-shadow. The edge dimensionality
- * is carried OPTICALLY — by the baked specular rim (light wrapping the curved
- * edge) plus the refraction band — not by a drawn outline. So box-shadow only
- * adds a whisper of a hairline (a baseline so the edge still reads over flat
- * backdrops where there's nothing to refract), a faint top lip, and the soft
- * cool float shadow that lifts it off the page. Cool-tinted shadow like Apple's.
+ * The glass edge treatment, layered as one box-shadow — tuned for tasteful
+ * DEPTH (a glass lozenge floating above the content), not a hard embossed
+ * button: a faint hairline, a gentle inner top sheen that gives the body volume,
+ * and a soft, diffuse cool float shadow that lifts it off the page.
  */
 const EDGE_SHADOW_LIGHT =
-  'inset 0 0 0 0.5px rgba(255, 255, 255, 0.4), ' + // Sharp hairline rim
-  'inset 0 1px 1px rgba(255, 255, 255, 0.8), ' +   // Soft bright top glare
-  '0 8px 32px rgba(31, 38, 135, 0.15), ' +          // Apple cool blue-purple float shadow
-  '0 1px 4px rgba(0, 0, 0, 0.04)';
+  'inset 0 0 0 0.5px rgba(255, 255, 255, 0.16), ' + // faint hairline — dynamic light is the primary edge
+  'inset 0 2px 4px rgba(255, 255, 255, 0.32), ' + // subtle top sheen (volume)
+  'inset 0 -3px 6px rgba(0, 0, 0, 0.06), ' + // subtle bottom inner shade
+  '0 4px 12px rgba(31, 38, 135, 0.09)'; // very light float shadow
 
 const EDGE_SHADOW_DARK =
-  'inset 0 0 0 0.5px rgba(255, 255, 255, 0.15), ' +
-  'inset 0 1px 1px rgba(255, 255, 255, 0.25), ' +
-  '0 8px 32px rgba(0, 0, 0, 0.35), ' +            
-  '0 1px 4px rgba(0, 0, 0, 0.15)';
+  'inset 0 0 0 0.5px rgba(255, 255, 255, 0.09), ' +
+  'inset 0 2px 4px rgba(255, 255, 255, 0.16), ' +
+  'inset 0 -3px 6px rgba(0, 0, 0, 0.18), ' +
+  '0 5px 14px rgba(0, 0, 0, 0.24)';
 
 const DEFAULT_OPTIONS: ResolvedOptions = {
   radius: 22, // Apple's standard corner radius
-  thickness: 40, // Bevel depth
-  refraction: 60, // Balanced with hybrid Snell + direct normal formula
+  thickness: 44, // lens depth — drives how pronounced/thick the edge lensing is
+  refraction: 46, // edge lensing strength (px) — concentrated at the border
   chromaticAberration: 0.03,
-  blur: 20, // Apple Liquid Glass standard: backdrop-filter blur(20px)
-  saturation: 180, // Apple Liquid Glass standard: saturate(180%)
+  blur: 10, // Apple Regular: light frost, backdrop still reads through
+  saturation: 150, // gentle lift, backdrop stays close to natural
   variant: 'regular',
   scheme: 'auto',
   tint: null,
   specular: true,
-  specularIntensity: 1.0,
+  specularIntensity: 0.5,
   edges: true,
   applyRadius: true,
   mapPixelRatio: 2,
@@ -191,6 +190,10 @@ export class LiquidGlass {
       this.mqlListener = (): void => this.applyTint();
       this.mqlScheme.addEventListener('change', this.mqlListener);
     }
+
+    // Pointer-tracked edge light for every glass element (core, not just
+    // .lg-interactive). The CSS `.liquid-glass::after` consumes the vars.
+    if (!this.usesFallback) registerPointerLight(this.element);
   }
 
   update(partial: LiquidGlassOptions): void {
@@ -215,7 +218,7 @@ export class LiquidGlass {
     }
 
     if (this.filter) {
-      this.filter.updateBlur(this.options.blur);
+      this.filter.updateBlur(this.effectiveBlur());
       this.filter.updateRefraction(this.effectiveRefraction());
       this.filter.updateSaturation(this.options.saturation);
     }
@@ -272,6 +275,7 @@ export class LiquidGlass {
     }
     this.filter?.destroy();
     this.filter = null;
+    unregisterPointerLight(this.element);
     this.element.style.backdropFilter = '';
     (this.element.style as WebkitStyle).webkitBackdropFilter = '';
     if (this.options.edges) this.element.style.boxShadow = '';
@@ -331,14 +335,32 @@ export class LiquidGlass {
   }
 
   /**
-   * Refraction is an inward displacement in px, so on a small element a large
-   * value would oversample past the centre and break up. Cap it to a fraction of
-   * the short side — the glass is physically "thinner" when it's small — so the
-   * strong default reads on panels/tiles but stays coherent on small controls.
+   * Refraction is an inward displacement in px. The lensing lives in the rim
+   * band, so if the displacement grows larger than that band, the backdrop
+   * mapping folds back on itself and the fold reads as a hard caustic outline
+   * just inside the edge (the "inner rectangle"). To stay a clean lens we cap the
+   * displacement to the rim band width — Apple's lensing is bounded by the
+   * material's thickness, not arbitrarily strong. Also capped to a fraction of
+   * the short side so tiny controls stay coherent.
    */
   private effectiveRefraction(): number {
-    const cap = Math.min(this.currentWidth, this.currentHeight) * 0.65;
-    return Math.min(this.options.refraction, cap);
+    // The lens is one smooth monotonic field across the whole surface (no band),
+    // so there is no inner ring to fold; the only fold risk is at the masked
+    // perimeter. Cap to a fraction of the short side so small controls stay
+    // coherent.
+    const sideCap = Math.min(this.currentWidth, this.currentHeight) * 0.5;
+    return Math.min(this.options.refraction, sideCap);
+  }
+
+  /**
+   * Backdrop blur is an absolute stdDeviation, so a fixed value looks far
+   * stronger on a short element (a 52px nav bar) than on a tall panel. Cap it to
+   * ~14% of the short side so thin bars/toolbars get a proportionally lighter
+   * frost and the material reads consistently across sizes.
+   */
+  private effectiveBlur(): number {
+    const cap = Math.min(this.currentWidth, this.currentHeight) * 0.14;
+    return Math.min(this.options.blur, cap);
   }
 
   /**
@@ -374,7 +396,7 @@ export class LiquidGlass {
     this.filter = new FilterChain({
       refraction: this.effectiveRefraction(),
       chromaticAberration: this.effectiveChromatic(),
-      blur: this.options.blur,
+      blur: this.effectiveBlur(),
       saturation: this.options.saturation,
       width: this.currentWidth,
       height: this.currentHeight,
@@ -422,6 +444,9 @@ export class LiquidGlass {
         refraction: this.options.refraction,
       });
       this.filter.updateDisplacement(disp.url, this.currentWidth, this.currentHeight, disp.padding);
+      // Blur and refraction are size-dependent (capped to the short side) — re-apply.
+      this.filter.updateBlur(this.effectiveBlur());
+      this.filter.updateRefraction(this.effectiveRefraction());
       if (this.options.specular) {
         const specUrl = getSpecularMap({
           width: this.currentWidth,
