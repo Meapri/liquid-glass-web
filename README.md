@@ -23,10 +23,11 @@ is composited by the browser GPU pipeline.
   matching glass physics).
 - **Baked specular rim** PNG (lit top-left edge + a subtle bottom-right lip for
   thickness), screen-blended inside the filter — no per-frame JS.
-- **Engine-owned edge treatment** — a scheme-aware `box-shadow` stack (a fine
-  bright rim, a whisper of inner top sheen, a faint bottom lip and a soft cool
-  float shadow) so a bare element reads as Liquid Glass with no extra CSS. Kept
-  understated to match Apple's Control Center, not a glossy bevel.
+- **Engine-owned edge treatment** — a scheme-aware `box-shadow` stack: a crisp
+  defined rim around the whole perimeter (the "droplet outline" that gives the
+  glass its dimensional edge), a brighter top lip, a faint bottom lip and a soft
+  cool float shadow — so a bare element reads as Liquid Glass with no extra CSS.
+  A clean 1px rim like Apple's Control Center, not a glossy bevel.
 - **Shared `MapCache`** keyed by `(w, h, radius, thickness, dpr)` — same-sized
   elements reuse the same data URLs.
 

@@ -56,26 +56,27 @@ const VARIANT_BLUR: Record<LiquidGlassVariant, number> = {
 
 /**
  * The glass edge treatment, layered as one box-shadow. Apple's Control Center
- * material is understated — the dimensionality reads from a *fine* rim plus a
- * soft float shadow, not a glossy bevel. Reading top→bottom:
- *   1. soft lit top edge (light from above)
- *   2. fine hairline rim around the perimeter (subtle, not a sticker outline)
- *   3. faint bottom lip — a hint of thickness on the far edge
- *   4. whisper of inner top sheen — lifts the body without going "wet"
- *   5. contact shadow + 6. soft cool float shadow — lifts it off the page
+ * tiles read dimensional from a crisp, defined bright rim (the "droplet
+ * outline") running the full perimeter — brightest where it meets the light on
+ * top — with the body sitting slightly darker inside it, like a rounded glass
+ * lip. It's a clean 1px rim, not a thick glossy bevel. Reading top→bottom:
+ *   1. crisp full-perimeter rim — the defined glass edge
+ *   2. brighter top lip — the rounded edge catching the overhead light
+ *   3. soft bottom lip — a hint of thickness on the far edge
+ *   4. contact shadow + 5. soft cool float shadow — lifts it off the page
  * Tuned against iOS 26 / macOS Tahoe Control Center; cool-tinted shadow.
  */
 const EDGE_SHADOW_LIGHT =
-  'inset 0 1px 0.5px rgba(255,255,255,0.42),' +
-  'inset 0 0 0 0.5px rgba(255,255,255,0.12),' +
-  'inset 0 -1px 1px rgba(255,255,255,0.06),' +
+  'inset 0 0 0 1px rgba(255,255,255,0.50),' +
+  'inset 0 1.5px 1px rgba(255,255,255,0.55),' +
+  'inset 0 -1px 1px rgba(255,255,255,0.18),' +
   '0 1px 2px rgba(20,24,40,0.06),' +
   '0 10px 28px rgba(20,24,40,0.15)';
 
 const EDGE_SHADOW_DARK =
-  'inset 0 1px 0.5px rgba(255,255,255,0.20),' +
-  'inset 0 0 0 0.5px rgba(255,255,255,0.08),' +
-  'inset 0 -1px 1px rgba(255,255,255,0.04),' +
+  'inset 0 0 0 1px rgba(255,255,255,0.40),' +
+  'inset 0 1.5px 1px rgba(255,255,255,0.34),' +
+  'inset 0 -1px 1px rgba(255,255,255,0.12),' +
   '0 1px 2px rgba(0,0,0,0.28),' +
   '0 14px 34px rgba(0,0,0,0.46)';
 
