@@ -47,18 +47,57 @@ export function generateSpecularMap(params: SpecularMapParams): string {
   const maxDepth = Math.min(halfW, halfH);
   const bevelWidth = Math.min(maxDepth, Math.max(2, params.thickness * dpr));
 
-  // ─── Hybrid Formula Constants ───
+  // ─── Formula Constants ───
   const globalStrength = maxDepth * 1.2;
-  const kFade = Math.max(1.0, bevelWidth * 0.35);
   const lightDirX = -0.7071; // Top-Left
   const lightDirY = -0.7071;
   const strengthMult = intensity;
-  const kSmooth = 4.0;
-  const kSmooth2 = kSmooth * kSmooth;
 
   // ─── Precomputed reciprocals ───
   const invHalfW = 1.0 / halfW;
   const invHalfH = 1.0 / halfH;
+
+  // Helper: Standard Rounded Rect SDF
+  function getSdf(adx: number, ady: number): number {
+    const distX = halfW - adx;
+    const distY = halfH - ady;
+    if (distX <= 0 || distY <= 0) return 0;
+
+    const qx = adx - innerW;
+    const qy = ady - innerH;
+
+    if (qx > 0 && qy > 0) {
+      const distToCorner = Math.sqrt(qx * qx + qy * qy);
+      if (distToCorner > r) return 0;
+      return r - distToCorner;
+    }
+    return Math.min(distX, distY);
+  }
+
+  // Helper: C2 Continuous Smootherstep
+  function smootherstep(edge0: number, edge1: number, x: number): number {
+    const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+    return t * t * t * (t * (t * 6 - 15) + 10);
+  }
+
+  // Helper: Clean height field without crease (exact match with DisplacementMap)
+  function getHeight(px: number, py: number): number {
+    const dxC = px - cx;
+    const dyC = py - cy;
+    const adx = Math.abs(dxC);
+    const ady = Math.abs(dyC);
+
+    const d = getSdf(adx, ady);
+    if (d <= 0) return 0;
+
+    const fade = smootherstep(0, bevelWidth, d);
+
+    const u = dxC * invHalfW;
+    const v = dyC * invHalfH;
+    const dome = (1.0 - u * u) * (1.0 - v * v);
+
+    return (bevelWidth + globalStrength * dome) * fade;
+  }
 
   // ─── Main Rendering Loop ───
   for (let y = 0; y < h; y++) {
@@ -68,67 +107,29 @@ export function generateSpecularMap(params: SpecularMapParams): string {
       const px = x + 0.5;
       const idx = (y * w + x) * 4;
 
-      // ─── 1. Inline Rounded-Rect SDF + Analytical Gradient ───
       const dxC = px - cx;
       const dyC = py - cy;
       const adx = Math.abs(dxC);
       const ady = Math.abs(dyC);
-      const sx = dxC >= 0 ? 1.0 : -1.0;
-      const sy = dyC >= 0 ? 1.0 : -1.0;
 
-      const qx = adx - innerW;
-      const qy = ady - innerH;
+      const d = getSdf(adx, ady);
+      if (d <= 0) continue;
 
-      let inside: number;
-      let dIdx: number;
-      let dIdy: number;
+      // ─── Numerical Finite Difference Gradient ───
+      const eps = 0.5;
+      const hL = getHeight(px - eps, py);
+      const hR = getHeight(px + eps, py);
+      const hU = getHeight(px, py - eps);
+      const hD = getHeight(px, py + eps);
 
-      if (qx > 0 && qy > 0) {
-        const dist = Math.sqrt(qx * qx + qy * qy);
-        inside = r - dist;
-        const invD = dist > 0.001 ? 1.0 / dist : 0;
-        dIdx = -sx * qx * invD;
-        dIdy = -sy * qy * invD;
-      } else {
-        const a = halfW - adx;
-        const b = halfH - ady;
-        const diff = a - b;
-        const denom = Math.sqrt(diff * diff + kSmooth2);
-        inside = (a + b - denom) * 0.5;
-        const wa = (1.0 - diff / denom) * 0.5;
-        const wb = (1.0 + diff / denom) * 0.5;
-        dIdx = wa * (-sx);
-        dIdy = wb * (-sy);
-      }
-
-      if (inside <= 0) continue;
-
-      // ─── 2. Rational Fade ───
-      const ipk = inside + kFade;
-      const fade = inside / ipk;
-      const dFdI = kFade / (ipk * ipk);
-
-      // ─── 3. Bivariate Paraboloid Dome ───
-      const u = dxC * invHalfW;
-      const v = dyC * invHalfH;
-      const uu = u * u;
-      const vv = v * v;
-      const dome = (1.0 - uu) * (1.0 - vv);
-
-      // ─── 4. Analytical Normal (Chain Rule) ───
-      const dFdx = dFdI * dIdx;
-      const dFdy = dFdI * dIdy;
-      const fadeCoeff = bevelWidth + globalStrength * dome;
-      const dDdx = -2.0 * u * invHalfW * (1.0 - vv);
-      const dDdy = -2.0 * v * invHalfH * (1.0 - uu);
-      const dHdx = fadeCoeff * dFdx + globalStrength * dDdx * fade;
-      const dHdy = fadeCoeff * dFdy + globalStrength * dDdy * fade;
+      const dHdx = (hR - hL) / (2.0 * eps);
+      const dHdy = (hD - hU) / (2.0 * eps);
 
       const nLen = Math.sqrt(dHdx * dHdx + dHdy * dHdy + 1.0);
       const Nx = -dHdx / nLen;
       const Ny = -dHdy / nLen;
 
-      // ─── 5. Specular Lighting ───
+      // ─── Specular Lighting ───
       const dot = Nx * lightDirX + Ny * lightDirY;
       let totalSpec = 0;
 

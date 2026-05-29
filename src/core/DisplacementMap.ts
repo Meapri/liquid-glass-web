@@ -68,18 +68,67 @@ export function generateDisplacementMap(
   const maxDepth = Math.min(halfW, halfH);
   const bevelWidth = Math.min(maxDepth, Math.max(2, params.thickness * dpr));
 
-  // ─── Hybrid Formula Constants ───
+  // ─── Formula Constants ───
   const globalStrength = maxDepth * 1.2;
-  const kFade = Math.max(1.0, bevelWidth * 0.35);
-  const eta = 1.0 / 1.45; // Glass IOR
-  const etaSq = eta * eta;
-  const directAmp = 0.6; // Apple-style direct normal amplification for dome interior
-  const kSmooth = 4.0;   // Smooth-min radius to eliminate X-crease (pixels)
-  const kSmooth2 = kSmooth * kSmooth; // Pre-squared for perf
+  const directAmp = 0.65;
+  const eta = 0.67; // 1.0 / 1.5 (Air to glass ratio)
 
-  // ─── Precomputed reciprocals for dome derivatives ───
+  // ─── Precomputed reciprocals ───
   const invHalfW = 1.0 / halfW;
   const invHalfH = 1.0 / halfH;
+
+  // Helper: Standard Rounded Rect SDF
+  function getSdf(adx: number, ady: number): number {
+    const distX = halfW - adx;
+    const distY = halfH - ady;
+    if (distX <= 0 || distY <= 0) return 0;
+
+    const qx = adx - innerW;
+    const qy = ady - innerH;
+
+    if (qx > 0 && qy > 0) {
+      const distToCorner = Math.sqrt(qx * qx + qy * qy);
+      if (distToCorner > r) return 0;
+      return r - distToCorner;
+    }
+    return Math.min(distX, distY);
+  }
+
+  // Helper: C2 Continuous Smootherstep
+  function smootherstep(edge0: number, edge1: number, x: number): number {
+    const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+    return t * t * t * (t * (t * 6 - 15) + 10);
+  }
+
+  // Helper: Clean height field without crease
+  function getHeight(px: number, py: number): number {
+    const dxC = px - cx;
+    const dyC = py - cy;
+    const adx = Math.abs(dxC);
+    const ady = Math.abs(dyC);
+
+    const d = getSdf(adx, ady);
+    if (d <= 0) return 0;
+
+    // Inside bevel transition
+    const fade = smootherstep(0, bevelWidth, d);
+
+    // Bivariate Paraboloid Dome
+    const u = dxC * invHalfW;
+    const v = dyC * invHalfH;
+    const dome = (1.0 - u * u) * (1.0 - v * v);
+
+    return (bevelWidth + globalStrength * dome) * fade;
+  }
+
+  // Helper: Snell's Law refract (for viewing ray I = (0, 0, -1))
+  function refract(nx: number, ny: number, nz: number): { rx: number; ry: number } {
+    const cosI = nz;
+    const k = 1.0 - eta * eta * (1.0 - cosI * cosI);
+    if (k < 0.0) return { rx: 0, ry: 0 };
+    const factor = eta * cosI - Math.sqrt(k);
+    return { rx: factor * nx, ry: factor * ny };
+  }
 
   // ─── Main Rendering Loop ───
   for (let y = 0; y < totalH; y++) {
@@ -90,117 +139,47 @@ export function generateDisplacementMap(
       const px = x + 0.5;
       const i = rowBase + x * 4;
 
-      // ─── 1. Inline Rounded-Rect SDF + Analytical Gradient ───
       const dxC = px - cx;
       const dyC = py - cy;
       const adx = Math.abs(dxC);
       const ady = Math.abs(dyC);
-      const sx = dxC >= 0 ? 1.0 : -1.0;
-      const sy = dyC >= 0 ? 1.0 : -1.0;
 
-      const qx = adx - innerW;
-      const qy = ady - innerH;
-
-      let inside: number;
-      let dIdx: number; // ∂(inside)/∂x
-      let dIdy: number; // ∂(inside)/∂y
-
-      if (qx > 0 && qy > 0) {
-        // Corner arc — gradient points radially inward (already C∞ smooth)
-        const dist = Math.sqrt(qx * qx + qy * qy);
-        inside = r - dist;
-        const invD = dist > 0.001 ? 1.0 / dist : 0;
-        dIdx = -sx * qx * invD;
-        dIdy = -sy * qy * invD;
-      } else {
-        // Flat region — use Smooth Minimum instead of min(a,b) to eliminate
-        // the X-shaped Mach band crease where (halfW - adx) == (halfH - ady).
-        // smoothMin(a, b, k) = (a + b - √((a-b)² + k²)) / 2
-        const a = halfW - adx;
-        const b = halfH - ady;
-        const diff = a - b;
-        const denom = Math.sqrt(diff * diff + kSmooth2);
-        inside = (a + b - denom) * 0.5;
-        // Analytical gradient weights: wa + wb = 1, smooth blend
-        const wa = (1.0 - diff / denom) * 0.5; // weight for a (x-edge)
-        const wb = (1.0 + diff / denom) * 0.5; // weight for b (y-edge)
-        dIdx = wa * (-sx);
-        dIdy = wb * (-sy);
-      }
-
-      if (inside <= 0) {
-        data[i] = 128;
-        data[i + 1] = 128;
-        data[i + 2] = 128;
-        data[i + 3] = 255;
+      const d = getSdf(adx, ady);
+      if (d <= 0) {
+        data[i] = 128; data[i + 1] = 128; data[i + 2] = 128; data[i + 3] = 255;
         continue;
       }
 
-      // ─── 2. Rational Fade: f(d) = d/(d+k), f'(d) = k/(d+k)² ───
-      const ipk = inside + kFade;
-      const fade = inside / ipk;
-      const dFdI = kFade / (ipk * ipk);
+      // ─── Numerical Finite Difference Gradient ───
+      const eps = 0.5;
+      const hL = getHeight(px - eps, py);
+      const hR = getHeight(px + eps, py);
+      const hU = getHeight(px, py - eps);
+      const hD = getHeight(px, py + eps);
 
-      // ─── 3. "Hacky" Bivariate Paraboloid Dome ───
-      const u = dxC * invHalfW;
-      const v = dyC * invHalfH;
-      const uu = u * u;
-      const vv = v * v;
-      const dome = (1.0 - uu) * (1.0 - vv);
+      const dHdx = (hR - hL) / (2.0 * eps);
+      const dHdy = (hD - hU) / (2.0 * eps);
 
-      // ─── 4. Analytical Height Gradient (Chain Rule) ───
-      // h = bevelWidth·fade + globalStrength·dome·fade
-      // ∂h/∂x = (bevelWidth + globalStrength·dome) · ∂fade/∂x  +  globalStrength · ∂dome/∂x · fade
-      const dFdx = dFdI * dIdx;
-      const dFdy = dFdI * dIdy;
-      const fadeCoeff = bevelWidth + globalStrength * dome;
-      const dDdx = -2.0 * u * invHalfW * (1.0 - vv);
-      const dDdy = -2.0 * v * invHalfH * (1.0 - uu);
-      const dHdx = fadeCoeff * dFdx + globalStrength * dDdx * fade;
-      const dHdy = fadeCoeff * dFdy + globalStrength * dDdy * fade;
-
-      // ─── 5. Surface Normal ───
+      // Normal vector
       const len = Math.sqrt(dHdx * dHdx + dHdy * dHdy + 1.0);
-      const N0 = -dHdx / len;
-      const N1 = -dHdy / len;
-      const N2 = 1.0 / len;
+      const normalX = -dHdx / len;
+      const normalY = -dHdy / len;
+      const normalZ = 1.0 / len;
 
-      // ─── 6. Hybrid Refraction: Snell's Law × Direct Normal Mapping ───
-      //
-      // Pure Snell's law gives near-zero displacement in the flat dome center
-      // because the normals are almost vertical (N ≈ (0,0,1)).
-      // Apple's Liquid Glass uses amplified normal-based displacement everywhere
-      // to create the characteristic "magnifying glass" look.
-      //
-      // Our hybrid: blend Snell's law (physically correct at steep edges) with
-      // direct normal displacement (visually strong at shallow dome center).
+      // ─── Edge / Center Refraction Mix ───
+      // Edge factor is 1.0 at outer boundary, smoothly decaying to 0.0 beyond bevelWidth
+      const edgeFactor = 1.0 - smootherstep(0, bevelWidth, d);
 
-      // A) Snell's Law for edge bevel
-      const kRefr = 1.0 - etaSq * (1.0 - N2 * N2);
-      let snellX = 0;
-      let snellY = 0;
-      if (kRefr >= 0) {
-        const b = eta * (-N2) + Math.sqrt(kRefr);
-        snellX = -b * N0;
-        snellY = -b * N1;
-        const tz = Math.max(Math.abs(-eta - b * N2), 0.1);
-        snellX /= tz;
-        snellY /= tz;
-      }
+      // 1. Snell's Law (Edge)
+      const snell = refract(normalX, normalY, normalZ);
 
-      // B) Direct Normal Mapping for dome interior (Apple-style amplification)
-      // N0, N1 are the XY components of the surface normal — directly proportional
-      // to surface slope. Multiplying by a strength factor gives controllable
-      // displacement that works even on very gentle slopes.
-      const directX = N0 * directAmp;
-      const directY = N1 * directAmp;
+      // 2. Hacky Direct Normal (Center)
+      const hackyX = normalX * directAmp;
+      const hackyY = normalY * directAmp;
 
-      // C) Blend: edge region uses Snell, interior uses direct normal mapping.
-      // fade goes 0→1 from edge to center, so we crossfade smoothly.
-      const edgeness = 1.0 - fade; // 1 at edge, 0 at center
-      const ee = edgeness * edgeness; // Sharpen the transition
-      const finalX = snellX * ee + directX * (1.0 - ee);
-      const finalY = snellY * ee + directY * (1.0 - ee);
+      // 3. Interpolation
+      const finalX = edgeFactor * (snell.rx * 1.5) + (1.0 - edgeFactor) * hackyX;
+      const finalY = edgeFactor * (snell.ry * 1.5) + (1.0 - edgeFactor) * hackyY;
 
       // Encode displacement into RGBA (128 = neutral, ±127 = max offset)
       data[i]     = Math.max(1, Math.min(255, Math.round(128 + finalX * 127)));
