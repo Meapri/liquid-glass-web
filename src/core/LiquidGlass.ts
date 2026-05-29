@@ -365,13 +365,15 @@ export class LiquidGlass {
 
   /**
    * The displacement map is a smooth gradient that feImage bilinear-upscales to
-   * the element box, so below the 'high' tier it renders at 1× — halving its
-   * canvas area (and its PNG-encode cost) versus the specular map with no
-   * visible loss of refraction. 'high' is unchanged (capped only by the 3× DPR
-   * ceiling), so capable machines keep the full-resolution lens.
+   * the element box, so it can render well below 1× with no visible loss. Large
+   * panels carry a broad, smooth lens that upscales especially cleanly, so they
+   * drop further (0.45×) — quadratically less canvas area / encode work — while
+   * small controls keep 0.6× so their tighter edge stays crisp.
    */
   private displacementDpr(): number {
-    return this.options.mapPixelRatio * 0.6;
+    const short = Math.min(this.currentWidth, this.currentHeight);
+    const factor = short > 220 ? 0.45 : 0.6;
+    return this.options.mapPixelRatio * factor;
   }
 
   /**

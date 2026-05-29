@@ -14,6 +14,7 @@
  */
 
 import { makeSurface } from './SurfaceField';
+import { scratchCanvas, scratchHTMLCanvas } from './scratch';
 
 export interface DisplacementMapParams {
   width: number;
@@ -59,18 +60,8 @@ export function generateDisplacementMap(
   const totalW = w + pad * 2;
   const totalH = h + pad * 2;
 
-  const canvas =
-    typeof OffscreenCanvas !== 'undefined'
-      ? new OffscreenCanvas(totalW, totalH)
-      : Object.assign(document.createElement('canvas'), {
-          width: totalW,
-          height: totalH,
-        });
-  if (canvas instanceof HTMLCanvasElement) {
-    canvas.width = totalW;
-    canvas.height = totalH;
-  }
-  const ctx = (canvas as HTMLCanvasElement | OffscreenCanvas).getContext('2d', {
+  const canvas = scratchCanvas('disp', totalW, totalH);
+  const ctx = canvas.getContext('2d', {
     willReadFrequently: false,
   }) as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 
@@ -151,9 +142,7 @@ export function generateDisplacementMap(
 }
 
 function offscreenToDataURL(canvas: OffscreenCanvas): string {
-  const tmp = document.createElement('canvas');
-  tmp.width = canvas.width;
-  tmp.height = canvas.height;
+  const tmp = scratchHTMLCanvas('encode', canvas.width, canvas.height);
   const tctx = tmp.getContext('2d', { willReadFrequently: true })!;
   tctx.drawImage(canvas as unknown as CanvasImageSource, 0, 0);
   return tmp.toDataURL('image/webp', 1.0);
