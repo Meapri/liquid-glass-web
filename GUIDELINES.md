@@ -2,15 +2,34 @@
 
 Welcome to the Liquid Glass library. This engine relies on physical optics (Snell's Law, physical surface normals) instead of basic CSS hacks to create genuine, volume-based glass. To get the most out of it, follow these design guidelines inspired by modern Spatial UI (like Apple's visionOS).
 
-## 1. Spatial Interaction & iOS 26 Animations (`.lg-interactive`)
+## 1. Motion & Animation (`.lg-interactive`)
 
-Glass UI should feel physically heavy, fluid, and responsive to the environment. The `.lg-interactive` class provides a complete suite of spatial interactions inspired by iOS 26 and visionOS:
+Apple designed the look and the motion of Liquid Glass *as one*: it "responds to
+interaction by instantly flexing and energizing with light … it comes to life on
+touch" (Meet Liquid Glass, WWDC25). The `.lg-interactive` class layers these
+official behaviours on top of the core optics:
 
-- **3D Parallax Tilt**: When the user hovers over a glass element, the engine tracks the pointer and gently tilts the glass in 3D space (`rotateX`, `rotateY`). This creates a visceral sense of physical volume.
-- **Dynamic Edge Glare**: A specular spotlight tracks the pointer, wrapping around the 1px edge of the glass (`mask-composite: destination-out`) and providing a very soft surface sheen.
-- **Fluid Jelly Squish (Press)**: When clicked, the glass does not simply shrink. It squishes like a physical liquid drop (`scale3d(1.03, 0.92, 1)`), widening slightly and compressing vertically before springing back.
-- **Spring Physics**: We have bundled an optimized cubic-bezier spring in the `.lg-interactive` class to ensure all state changes return to resting state with natural physical tension.
-- **Entrance (`.lg-entrance`)**: Use this class to spring-load elements as they mount into the DOM.
+- **Interaction illumination** — *"the material illuminates from within … starting
+  right under your fingertips, the glow spreads throughout the element."* On
+  press, the engine marks the press point and blooms a soft glow outward from the
+  finger (`--lg-press` 0→1 grows the radial). Quiet at rest, alive on touch.
+- **Pointer-tracked edge light** — the environment light "travels around the
+  material, defining its silhouette": a bright rim segment follows the cursor and
+  fades in by proximity (this is core, on *every* glass element — see §5).
+- **Gel-like flex (press)** — *"an inherent gel-like flexibility … as it moves in
+  tandem with your interaction."* The press squishes like a liquid drop
+  (`scale3d(1.03, 0.92, 1)`) and springs back.
+- **3D parallax tilt** — on hover the glass tilts toward the pointer (`rotateX/Y`)
+  for a sense of physical volume.
+- **Lift on touch** — the element lifts slightly on hover so the resting state
+  stays visually quiet and comes to life on interaction.
+- **Materialize in / out (`.lg-entrance` / `.lg-materialize` / `.lg-dematerialize`)**
+  — *"Instead of fading, Liquid Glass objects materialize in and out by gradually
+  modulating the light bending and lensing."* We spring the scale (which scales
+  the lensing with it) rather than relying on opacity alone.
+- **Reduced Motion** — *"Reduced Motion … disables any elastic properties."* Under
+  `prefers-reduced-motion: reduce` the elastic tilt/jelly/lift/spring are dropped;
+  the light still responds, just without springy motion.
 
 ## 1.5 Background Liquid Morphing (Gooey Effect)
 
