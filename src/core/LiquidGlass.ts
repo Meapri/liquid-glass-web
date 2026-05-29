@@ -27,8 +27,8 @@ import { getDisplacementMap, getSpecularMap } from './MapCache';
 
 const VARIANT_TINT: Record<string, { light: string; dark: string }> = {
   regular: {
-    light: 'rgba(255, 255, 255, 0.10)',
-    dark: 'rgba(28, 28, 34, 0.28)',
+    light: 'rgba(255, 255, 255, 0.08)',
+    dark: 'rgba(40, 38, 50, 0.15)',
   },
   clear: {
     light: 'rgba(255, 255, 255, 0.02)',
@@ -41,52 +41,51 @@ const VARIANT_TINT: Record<string, { light: string; dark: string }> = {
 };
 
 /**
- * Default frost per variant when `blur` isn't given. Apple's Liquid Glass leans
- * on refraction, not blur — `regular` keeps a little frost for legibility,
- * `clear` is nearly unfrosted (for bold content over media), `tinted` a touch
- * more. Explicit `blur` always wins.
+ * Default frost per variant when `blur` isn't given. Liquid Glass blurs the
+ * backdrop *before* refracting it, so sharp content (text, edges) is smoothed
+ * into colour first and the lens bends a clean image — without enough blur,
+ * strong refraction over text looks busy. `regular` is well-frosted for use
+ * over arbitrary content; `clear` stays more transparent for bold media;
+ * `tinted` a touch more frosted. Explicit `blur` always wins.
  */
 const VARIANT_BLUR: Record<LiquidGlassVariant, number> = {
-  regular: 3,
-  clear: 1.5,
-  tinted: 4,
+  regular: 4,
+  clear: 2,
+  tinted: 6,
 };
 
 /**
- * The glass edge treatment, layered as one box-shadow. Reading top→bottom:
- *   1. crisp lit top inner edge (light from above)
- *   2. hairline rim around the whole perimeter (the "droplet outline")
- *   3. broad inner top glow — lifts the body so the glass reads luminous, not flat
- *   4. bottom-lip highlight — the far edge catches light → sense of thickness
- *   5. faint inner bottom shadow — depth
- *   6. contact shadow + 7. soft cool float shadow — lifts it off the page
- * Tuned to match iOS 26 Control Center glass; cool-tinted shadow like Apple's.
+ * The glass edge treatment, layered as one box-shadow. Apple's Control Center
+ * material is understated — the dimensionality reads from a *fine* rim plus a
+ * soft float shadow, not a glossy bevel. Reading top→bottom:
+ *   1. soft lit top edge (light from above)
+ *   2. fine hairline rim around the perimeter (subtle, not a sticker outline)
+ *   3. faint bottom lip — a hint of thickness on the far edge
+ *   4. whisper of inner top sheen — lifts the body without going "wet"
+ *   5. contact shadow + 6. soft cool float shadow — lifts it off the page
+ * Tuned against iOS 26 / macOS Tahoe Control Center; cool-tinted shadow.
  */
 const EDGE_SHADOW_LIGHT =
-  'inset 0 1px 0.5px rgba(255,255,255,0.9),' +
-  'inset 0 0 0 0.6px rgba(255,255,255,0.5),' +
-  'inset 0 5px 14px rgba(255,255,255,0.18),' +
-  'inset 0 -1.5px 1px rgba(255,255,255,0.28),' +
-  'inset 0 -7px 12px rgba(0,0,0,0.045),' +
-  '0 1px 1.5px rgba(20,24,40,0.06),' +
-  '0 12px 30px rgba(20,24,40,0.16)';
+  'inset 0 1px 0.5px rgba(255,255,255,0.42),' +
+  'inset 0 0 0 0.5px rgba(255,255,255,0.12),' +
+  'inset 0 -1px 1px rgba(255,255,255,0.06),' +
+  '0 1px 2px rgba(20,24,40,0.06),' +
+  '0 10px 28px rgba(20,24,40,0.15)';
 
 const EDGE_SHADOW_DARK =
-  'inset 0 1px 0.5px rgba(255,255,255,0.35),' +
-  'inset 0 0 0 0.6px rgba(255,255,255,0.16),' +
-  'inset 0 5px 14px rgba(255,255,255,0.07),' +
-  'inset 0 -1.5px 1px rgba(255,255,255,0.10),' +
-  'inset 0 -7px 12px rgba(0,0,0,0.16),' +
-  '0 1px 1.5px rgba(0,0,0,0.30),' +
-  '0 16px 40px rgba(0,0,0,0.50)';
+  'inset 0 1px 0.5px rgba(255,255,255,0.20),' +
+  'inset 0 0 0 0.5px rgba(255,255,255,0.08),' +
+  'inset 0 -1px 1px rgba(255,255,255,0.04),' +
+  '0 1px 2px rgba(0,0,0,0.28),' +
+  '0 14px 34px rgba(0,0,0,0.46)';
 
 const DEFAULT_OPTIONS: ResolvedOptions = {
   radius: 24,
   thickness: 18,
-  refraction: 18,
-  chromaticAberration: 0.4,
-  blur: 4,
-  saturation: 160,
+  refraction: 30,
+  chromaticAberration: 0.22,
+  blur: 12,
+  saturation: 145,
   variant: 'regular',
   scheme: 'auto',
   tint: null,

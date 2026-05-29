@@ -8,10 +8,14 @@ is composited by the browser GPU pipeline.
 
 ## Approach
 
-- **Edge-concentrated convex-squircle lens** displacement map (canvas-generated),
-  profile `r³ / (1 − r⁴)^0.75` confined to a **bezel band** of width `thickness`
-  at the rim. The centre stays optically clear and only the edge bends/magnifies
-  the backdrop — the defining Liquid Glass behaviour, versus a uniform magnifier.
+- **Seam-free separable lens** displacement map (canvas-generated). A per-axis
+  squircle profile `r³ / (1 − r⁴)^0.75` + gentle body dome is applied separably
+  (x-displacement from |x|, y from |y|), so the whole element refracts like one
+  thick glass droplet — gently in the centre, sharply at the rim. Because each
+  axis eases through zero at its centre line, the field is smooth everywhere:
+  **no diagonal "X" seam** (that was a nearest-edge artifact; real Liquid Glass
+  has none). Strong refraction over text stays clean because the backdrop is
+  blurred *before* it's bent.
 - **Padded displacement canvas** (`±refraction` px on each side) so the rim
   can sample real backdrop beyond the element box without clipping.
 - **Three-pass chromatic aberration** — R / G / B channels run through
@@ -19,9 +23,10 @@ is composited by the browser GPU pipeline.
   matching glass physics).
 - **Baked specular rim** PNG (lit top-left edge + a subtle bottom-right lip for
   thickness), screen-blended inside the filter — no per-frame JS.
-- **Engine-owned edge treatment** — a scheme-aware `box-shadow` stack (bright rim
-  hairline, broad inner top glow that lifts the body, bottom-lip highlight, soft
-  cool float shadow) so a bare element reads as Liquid Glass with no extra CSS.
+- **Engine-owned edge treatment** — a scheme-aware `box-shadow` stack (a fine
+  bright rim, a whisper of inner top sheen, a faint bottom lip and a soft cool
+  float shadow) so a bare element reads as Liquid Glass with no extra CSS. Kept
+  understated to match Apple's Control Center, not a glossy bevel.
 - **Shared `MapCache`** keyed by `(w, h, radius, thickness, dpr)` — same-sized
   elements reuse the same data URLs.
 
@@ -49,11 +54,11 @@ new LiquidGlass(document.querySelector('.tab-bar')!, {
 | option | default | meaning |
 | --- | --- | --- |
 | `radius` | `'auto'` | px, `'pill'`, or `'auto'` (reads computed border-radius) |
-| `thickness` | `18` | lensing **bezel band** width in px — how far the refraction reaches in from the rim (also the specular rim band) |
-| `refraction` | `18` | max inward displacement at the boundary, in px |
-| `chromaticAberration` | `0.4` | 0–1; at 0.4 the rim shows visible RGB fringes |
-| `blur` | per-variant | backdrop frost stdDeviation; default depends on variant (`regular` 3, `clear` 1.5, `tinted` 4) |
-| `saturation` | `160` | % saturation boost applied after displacement |
+| `thickness` | `18` | specular rim band width in px (the lens itself spans the whole surface) |
+| `refraction` | `30` | max inward displacement at the rim, in px — the overall refraction strength |
+| `chromaticAberration` | `0.22` | 0–1; subtle RGB fringing at the rim (kept low so the body stays clean) |
+| `blur` | per-variant | backdrop frost stdDeviation, applied before refraction; default by variant (`regular` 4, `clear` 2, `tinted` 6) |
+| `saturation` | `145` | % saturation applied after displacement (Apple keeps the backdrop close to neutral, not over-vivid) |
 | `variant` | `'regular'` | `'regular'` (frosted, legible) \| `'clear'` (most transparent, for bold content) \| `'tinted'` — sets tint and the default frost |
 | `scheme` | `'auto'` | `'light'` \| `'dark'` \| `'auto'` |
 | `tint` | — | explicit CSS color, overrides variant |

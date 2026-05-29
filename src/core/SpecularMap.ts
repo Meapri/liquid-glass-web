@@ -72,15 +72,17 @@ export function generateSpecularMap(params: SpecularMapParams): string {
   ctx.fillStyle = litGrad;
   ctx.fillRect(0, 0, w, h);
 
-  // 3. Soft hotspot — broad diffuse white centred near top-left of the inside.
-  //    Drawn additively so it lifts the rim without washing out the core.
+  // 3. Soft hotspot — a restrained diffuse highlight near the top-left interior,
+  //    the gentle sheen of an overhead light on the glass. Kept subtle so flat
+  //    tiles read as refined frost (not a glossy bead) — Apple's Control Center
+  //    material is understated, carried by the frost + rim, not a wet gloss.
   ctx.globalCompositeOperation = 'lighter';
-  const hotX = w * 0.28;
-  const hotY = h * 0.24;
-  const hotR = Math.max(w, h) * 0.45;
+  const hotX = w * 0.3;
+  const hotY = h * 0.26;
+  const hotR = Math.max(w, h) * 0.5;
   const hot = ctx.createRadialGradient(hotX, hotY, 0, hotX, hotY, hotR);
-  hot.addColorStop(0, `rgba(255, 255, 255, ${0.16 * intensity})`);
-  hot.addColorStop(0.6, `rgba(255, 255, 255, ${0.04 * intensity})`);
+  hot.addColorStop(0, `rgba(255, 255, 255, ${0.14 * intensity})`);
+  hot.addColorStop(0.55, `rgba(255, 255, 255, ${0.04 * intensity})`);
   hot.addColorStop(1, 'rgba(255, 255, 255, 0)');
   ctx.fillStyle = hot;
   // Clip the hotspot to the rounded shape so it doesn't bleed past corners.
