@@ -585,3 +585,32 @@ input[type='text'] {
 .anim-sheet h3 { margin: 0; font-size: 19px; letter-spacing: -0.01em; }
 .anim-sheet p { margin: 0; font-size: 14px; line-height: 1.5; opacity: 0.86; }
 .anim-sheet .btn-sm { align-self: flex-end; margin-top: 6px; }
+
+/* Context menu (iOS long-press style) */
+.anim-ctx {
+  position: fixed;
+  visibility: hidden;
+  width: 256px;
+  padding: 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  z-index: 1000;
+}
+.ctx-item {
+  all: unset;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 11px 14px;
+  border-radius: 12px;
+  font-size: 16px;
+  color: #fff;
+  transition: background 140ms ease;
+}
+.ctx-item svg { width: 21px; height: 21px; flex: none; opacity: 0.92; }
+.ctx-item span { flex: 1; }
+.ctx-item:hover { background: rgba(255, 255, 255, 0.12); }
+.ctx-sep { height: 1px; background: rgba(255, 255, 255, 0.14); margin: 5px 4px; }
+.ctx-danger { color: #ff6b6b; }

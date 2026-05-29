@@ -102,6 +102,16 @@ if (sheetEl) {
   document.getElementById('anim-sheet-close')?.addEventListener('click', () => sheet.dismiss());
 }
 
+// Context menu (iOS long-press style) — same morph engine, grouped icon rows.
+const ctxTrigger = document.getElementById('anim-ctx-trigger');
+const ctxEl = document.getElementById('anim-ctx');
+if (ctxTrigger && ctxEl) {
+  const ctx = new LiquidMenu(ctxTrigger, ctxEl, { placement: 'bottom-start', offset: 10 });
+  for (const item of Array.from(ctxEl.querySelectorAll<HTMLButtonElement>('.ctx-item'))) {
+    item.addEventListener('click', () => ctx.close());
+  }
+}
+
 // Tab bar active toggle (purely visual)
 for (const tab of Array.from(document.querySelectorAll<HTMLButtonElement>('.tab'))) {
   tab.addEventListener('click', () => {

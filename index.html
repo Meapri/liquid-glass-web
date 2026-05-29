@@ -178,7 +178,7 @@
             <button class="btn anim-menu-trigger liquid-glass lg-interactive" id="anim-menu-trigger" data-glass='{"radius":"pill","thickness":44,"refraction":50,"variant":"regular"}'>
               Options ▾
             </button>
-            <div class="anim-menu liquid-glass" id="anim-menu" data-glass='{"radius":24,"thickness":44,"refraction":56,"variant":"regular"}'>
+            <div class="anim-menu liquid-glass" id="anim-menu" data-glass='{"radius":24,"thickness":44,"refraction":40,"blur":28,"variant":"regular"}'>
               <button class="anim-menu-item">Share</button>
               <button class="anim-menu-item">Duplicate</button>
               <button class="anim-menu-item">Rename</button>
@@ -214,6 +214,14 @@
               Open sheet
             </button>
           </div>
+
+          <!-- Context menu (iOS long-press style) -->
+          <div class="anim-card">
+            <div class="anim-label">Context menu — iOS long-press style: grouped rows, icons, destructive</div>
+            <button class="btn liquid-glass lg-interactive" id="anim-ctx-trigger" data-glass='{"radius":"pill","thickness":44,"refraction":50,"variant":"regular"}'>
+              Show menu
+            </button>
+          </div>
         </div>
 
         <!-- The sheet itself (fixed-positioned, hidden until presented) -->
@@ -222,6 +230,32 @@
           <h3>Liquid sheet</h3>
           <p>Rises from below and grows — thicker glass at full size, with a dimming scrim behind for legibility.</p>
           <button class="btn btn-sm liquid-glass lg-interactive" id="anim-sheet-close" data-glass='{"radius":"pill","thickness":40,"refraction":44,"variant":"tinted"}'>Done</button>
+        </div>
+
+        <!-- The context menu (fixed-positioned, hidden until shown) -->
+        <div class="anim-ctx liquid-glass" id="anim-ctx" data-glass='{"radius":22,"thickness":44,"refraction":40,"blur":30,"tint":"rgba(30,30,36,0.55)"}'>
+          <button class="ctx-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/></svg>
+            <span>Copy</span>
+          </button>
+          <button class="ctx-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="13" height="13" rx="2"/><path d="M20 9v9a2 2 0 0 1-2 2H9"/></svg>
+            <span>Duplicate</span>
+          </button>
+          <button class="ctx-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/><path d="m3 3 18 18"/></svg>
+            <span>Hide</span>
+          </button>
+          <div class="ctx-sep"></div>
+          <button class="ctx-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M12 9v6M9 12h6"/></svg>
+            <span>Add to Album</span>
+          </button>
+          <div class="ctx-sep"></div>
+          <button class="ctx-item ctx-danger">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/></svg>
+            <span>Delete</span>
+          </button>
         </div>
       </section>
 
