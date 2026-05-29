@@ -69,29 +69,39 @@ export function generateDisplacementMap(
   const bevelWidth = Math.min(maxDepth, Math.max(2, params.thickness * dpr));
 
   // ─── Formula Constants ───
-  const directAmp = 0.85;
+  const globalStrength = maxDepth * 0.15; // Very subtle dome
 
-  // Helper: Standard Rounded Rect SDF
-  function getSdf(adx: number, ady: number): number {
-    const distX = halfW - adx;
-    const distY = halfH - ady;
-    if (distX <= 0 || distY <= 0) return 0;
-
-    const qx = adx - innerW;
-    const qy = ady - innerH;
-
-    if (qx > 0 && qy > 0) {
-      const distToCorner = Math.sqrt(qx * qx + qy * qy);
-      if (distToCorner > r) return 0;
-      return r - distToCorner;
-    }
-    return Math.min(distX, distY);
+  // Helper: Distance to the inner rectangle boundary (C1 continuous outside).
+  // Inside the inner rectangle, this is exactly 0.
+  function getOuterDist(px: number, py: number): number {
+    const qx = Math.max(0, Math.abs(px - cx) - innerW);
+    const qy = Math.max(0, Math.abs(py - cy) - innerH);
+    return Math.sqrt(qx * qx + qy * qy);
   }
 
   // Helper: C2 Continuous Smootherstep
   function smootherstep(edge0: number, edge1: number, x: number): number {
     const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
     return t * t * t * (t * (t * 6 - 15) + 10);
+  }
+
+  // Pure mathematical C1-continuous smooth height field. No diagonal creases!
+  function getHeight(px: number, py: number): number {
+    const distToBoundary = r - getOuterDist(px, py);
+    if (distToBoundary <= 0) return 0; // Outside
+
+    // Smooth bevel
+    const t = Math.max(0, Math.min(1, distToBoundary / bevelWidth));
+    const hBevel = bevelWidth * smootherstep(0, 1.0, t);
+
+    // Subtle center dome to give very slight glass volume inside the bevel
+    const dxC = px - cx;
+    const dyC = py - cy;
+    const u = dxC / halfW;
+    const v = dyC / halfH;
+    const hDome = globalStrength * (1.0 - u * u) * (1.0 - v * v);
+
+    return hBevel + hDome;
   }
 
   // ─── Main Rendering Loop ───
@@ -103,43 +113,47 @@ export function generateDisplacementMap(
       const px = x + 0.5;
       const i = rowBase + x * 4;
 
-      const dxC = px - cx;
-      const dyC = py - cy;
-      const adx = Math.abs(dxC);
-      const ady = Math.abs(dyC);
-
-      const d = getSdf(adx, ady);
-      if (d <= 0) {
+      const distToBoundary = r - getOuterDist(px, py);
+      if (distToBoundary <= 0) {
         data[i] = 128; data[i + 1] = 128; data[i + 2] = 128; data[i + 3] = 255;
         continue;
       }
 
-      // ─── 1. SDF Gradient (Direction vector perpendicular to the boundary) ───
+      // 1. Compute flawless normal via finite differences of the C1 continuous height field
       const eps = 0.5;
-      const dL = getSdf(adx - eps, ady);
-      const dR = getSdf(adx + eps, ady);
-      const dU = getSdf(adx, ady - eps);
-      const dD = getSdf(adx, ady + eps);
+      const hL = getHeight(px - eps, py);
+      const hR = getHeight(px + eps, py);
+      const hU = getHeight(px, py - eps);
+      const hD = getHeight(px, py + eps);
 
-      const dDdx = (dR - dL) / (2.0 * eps);
-      const dDdy = (dD - dU) / (2.0 * eps);
-      const len = Math.sqrt(dDdx * dDdx + dDdy * dDdy);
+      const dHdx = (hR - hL) / (2.0 * eps);
+      const dHdy = (hD - hU) / (2.0 * eps);
+      const len = Math.sqrt(dHdx * dHdx + dHdy * dHdy + 1.0);
 
-      const sx = dxC >= 0 ? 1.0 : -1.0;
-      const sy = dyC >= 0 ? 1.0 : -1.0;
-      const dirX = len > 0.0001 ? (dDdx / len) * sx : 0;
-      const dirY = len > 0.0001 ? (dDdy / len) * sy : 0;
+      const nx = -dHdx / len;
+      const ny = -dHdy / len;
+      const nz = 1.0 / len;
 
-      // ─── 2. Monotonic Decay Refraction Strength ───
-      // Max displacement at the outer boundary, decay monotonically to 0.0 at bevelWidth.
-      // Zero inflection points => 100% guarantee of ZERO physical creases or fold lines.
-      const t = Math.max(0, Math.min(1, d / bevelWidth));
-      const strength = 1.0 - smootherstep(0, 1.0, t);
+      // 2. Snell's Law (Air to Glass)
+      const ex = 0.0, ey = 0.0, ez = -1.0;
+      const eta = 0.667; // IOR 1.5
+      const dot = ex * nx + ey * ny + ez * nz;
+      const k = 1.0 - eta * eta * (1.0 - dot * dot);
 
-      // ─── 3. Direct Monotonic Displacement (Lens Refraction Effect) ───
-      // Perpendicular to the glass border, pulling pixels inward smoothly
-      const finalX = -dirX * strength * directAmp;
-      const finalY = -dirY * strength * directAmp;
+      let finalX = 0;
+      let finalY = 0;
+
+      if (k >= 0) {
+        // Refracted ray vector
+        const rx = eta * ex - (eta * dot + Math.sqrt(k)) * nx;
+        const ry = eta * ey - (eta * dot + Math.sqrt(k)) * ny;
+
+        // Directly encode the refracted ray's lateral shift into the displacement map.
+        // Multiply by an amplitude to make sure it covers enough normalized range [-1, 1].
+        const amp = 1.5;
+        finalX = rx * amp;
+        finalY = ry * amp;
+      }
 
       // Encode displacement into RGBA (128 = neutral, ±127 = max offset)
       data[i]     = Math.max(1, Math.min(255, Math.round(128 + finalX * 127)));

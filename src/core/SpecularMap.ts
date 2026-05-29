@@ -46,33 +46,38 @@ export function generateSpecularMap(params: SpecularMapParams): string {
 
   const maxDepth = Math.min(halfW, halfH);
   const bevelWidth = Math.min(maxDepth, Math.max(2, params.thickness * dpr));
+  const globalStrength = maxDepth * 0.15; // Very subtle dome
 
   // ─── Formula Constants ───
   const lightDirX = -0.7071; // Top-Left
   const lightDirY = -0.7071;
   const strengthMult = intensity;
 
-  // Helper: Standard Rounded Rect SDF
-  function getSdf(adx: number, ady: number): number {
-    const distX = halfW - adx;
-    const distY = halfH - ady;
-    if (distX <= 0 || distY <= 0) return 0;
-
-    const qx = adx - innerW;
-    const qy = ady - innerH;
-
-    if (qx > 0 && qy > 0) {
-      const distToCorner = Math.sqrt(qx * qx + qy * qy);
-      if (distToCorner > r) return 0;
-      return r - distToCorner;
-    }
-    return Math.min(distX, distY);
+  function getOuterDist(px: number, py: number): number {
+    const qx = Math.max(0, Math.abs(px - cx) - innerW);
+    const qy = Math.max(0, Math.abs(py - cy) - innerH);
+    return Math.sqrt(qx * qx + qy * qy);
   }
 
-  // Helper: C2 Continuous Smootherstep
   function smootherstep(edge0: number, edge1: number, x: number): number {
     const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
     return t * t * t * (t * (t * 6 - 15) + 10);
+  }
+
+  function getHeight(px: number, py: number): number {
+    const distToBoundary = r - getOuterDist(px, py);
+    if (distToBoundary <= 0) return 0;
+
+    const t = Math.max(0, Math.min(1, distToBoundary / bevelWidth));
+    const hBevel = bevelWidth * smootherstep(0, 1.0, t);
+
+    const dxC = px - cx;
+    const dyC = py - cy;
+    const u = dxC / halfW;
+    const v = dyC / halfH;
+    const hDome = globalStrength * (1.0 - u * u) * (1.0 - v * v);
+
+    return hBevel + hDome;
   }
 
   // ─── Main Rendering Loop ───
@@ -83,40 +88,26 @@ export function generateSpecularMap(params: SpecularMapParams): string {
       const px = x + 0.5;
       const idx = (y * w + x) * 4;
 
-      const dxC = px - cx;
-      const dyC = py - cy;
-      const adx = Math.abs(dxC);
-      const ady = Math.abs(dyC);
+      const distToBoundary = r - getOuterDist(px, py);
+      if (distToBoundary <= 0) continue;
 
-      const d = getSdf(adx, ady);
-      if (d <= 0) continue;
-
-      // ─── 1. SDF Gradient (Exact match with DisplacementMap) ───
+      // Compute flawless normal via finite differences
       const eps = 0.5;
-      const dL = getSdf(adx - eps, ady);
-      const dR = getSdf(adx + eps, ady);
-      const dU = getSdf(adx, ady - eps);
-      const dD = getSdf(adx, ady + eps);
+      const hL = getHeight(px - eps, py);
+      const hR = getHeight(px + eps, py);
+      const hU = getHeight(px, py - eps);
+      const hD = getHeight(px, py + eps);
 
-      const dDdx = (dR - dL) / (2.0 * eps);
-      const dDdy = (dD - dU) / (2.0 * eps);
-      const len = Math.sqrt(dDdx * dDdx + dDdy * dDdy);
+      const dHdx = (hR - hL) / (2.0 * eps);
+      const dHdy = (hD - hU) / (2.0 * eps);
+      const len = Math.sqrt(dHdx * dHdx + dHdy * dHdy + 1.0);
 
-      const sx = dxC >= 0 ? 1.0 : -1.0;
-      const sy = dyC >= 0 ? 1.0 : -1.0;
-      const dirX = len > 0.0001 ? (dDdx / len) * sx : 0;
-      const dirY = len > 0.0001 ? (dDdy / len) * sy : 0;
-
-      // ─── 2. Monotonic Decay Specular Strength ───
-      const t = Math.max(0, Math.min(1, d / bevelWidth));
-      const strength = 1.0 - smootherstep(0, 1.0, t);
-
-      // ─── 3. Match Normal Vector (Perpendicular to boundary, pointing outward for specular light bounce)
-      const Nx = dirX * strength;
-      const Ny = dirY * strength;
+      const nx = -dHdx / len;
+      const ny = -dHdy / len;
+      const nz = 1.0 / len;
 
       // ─── Specular Lighting ───
-      const dot = Nx * lightDirX + Ny * lightDirY;
+      const dot = nx * lightDirX + ny * lightDirY;
       let totalSpec = 0;
 
       if (dot > 0) {
