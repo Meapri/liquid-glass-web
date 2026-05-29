@@ -60,7 +60,11 @@ export class LiquidMenu {
     menu.style.position = 'fixed';
     menu.style.visibility = 'hidden';
     menu.style.pointerEvents = 'none';
+    menu.style.zIndex = '1200';
     menu.dataset.lgMenu = 'closed';
+    // Portal to <body> so the fixed menu escapes any ancestor stacking/transform
+    // context and layers above page chrome (tab bars etc.).
+    if (menu.parentElement !== document.body) document.body.appendChild(menu);
 
     trigger.addEventListener('click', this.onTriggerClick);
     if (this.dismiss) {
@@ -219,22 +223,23 @@ export class LiquidSheet {
     sheet.style.bottom = `${this.gap}px`;
     sheet.style.transform = 'translateX(-50%)';
     sheet.style.visibility = 'hidden';
-    sheet.style.zIndex = '1001';
+    sheet.style.zIndex = '1201';
     sheet.dataset.lgSheet = 'closed';
+    if (sheet.parentElement !== document.body) document.body.appendChild(sheet);
 
+    // Dim only — NO backdrop blur. The sheet has its own backdrop-filter and
+    // sits above the scrim, so blurring the scrim would make the sheet sample a
+    // dark, doubly-blurred backdrop and read as a murky, buried panel.
     this.scrim = document.createElement('div');
     Object.assign(this.scrim.style, {
       position: 'fixed',
       inset: '0',
-      background: 'rgba(0, 0, 0, 0.42)',
-      backdropFilter: 'blur(2px)',
+      background: 'rgba(0, 0, 0, 0.32)',
       opacity: '0',
       visibility: 'hidden',
-      zIndex: '1000',
+      zIndex: '1200',
       pointerEvents: 'none',
     } satisfies Partial<CSSStyleDeclaration>);
-    (this.scrim.style as CSSStyleDeclaration & { webkitBackdropFilter?: string }).webkitBackdropFilter =
-      'blur(2px)';
     document.body.appendChild(this.scrim);
 
     if (this.dismissOnScrim) {
