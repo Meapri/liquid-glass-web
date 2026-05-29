@@ -48,8 +48,6 @@ export function generateSpecularMap(params: SpecularMapParams): string {
   const bevelWidth = Math.min(maxDepth, Math.max(2, params.thickness * dpr));
 
   // ─── Formula Constants ───
-  // Subtle dome thickness to ensure flat-ish readable center, exactly like Apple Liquid Glass
-  const globalStrength = bevelWidth * 0.15;
   const lightDirX = -0.7071; // Top-Left
   const lightDirY = -0.7071;
   const strengthMult = intensity;
@@ -77,27 +75,6 @@ export function generateSpecularMap(params: SpecularMapParams): string {
     return t * t * t * (t * (t * 6 - 15) + 10);
   }
 
-  // Helper: Clean height field without crease (100% single-profile transition, exact match with DisplacementMap)
-  function getHeight(px: number, py: number): number {
-    const dxC = px - cx;
-    const dyC = py - cy;
-    const adx = Math.abs(dxC);
-    const ady = Math.abs(dyC);
-
-    const d = getSdf(adx, ady);
-    if (d <= 0) return 0;
-
-    // t is normalized distance from edge (0) to center (1)
-    const t = d / maxDepth;
-
-    // A single continuous profile that rises quickly near the edge and flattens out.
-    // Because it is a single mathematical equation, there are absolutely ZERO segmented creases.
-    const profile = 1.0 - Math.pow(1.0 - t, 3.0);
-    const height = (bevelWidth + globalStrength) * smootherstep(0, 1.0, profile);
-
-    return height;
-  }
-
   // ─── Main Rendering Loop ───
   for (let y = 0; y < h; y++) {
     const py = y + 0.5;
@@ -114,19 +91,29 @@ export function generateSpecularMap(params: SpecularMapParams): string {
       const d = getSdf(adx, ady);
       if (d <= 0) continue;
 
-      // ─── Numerical Finite Difference Gradient ───
+      // ─── 1. SDF Gradient (Exact match with DisplacementMap) ───
       const eps = 0.5;
-      const hL = getHeight(px - eps, py);
-      const hR = getHeight(px + eps, py);
-      const hU = getHeight(px, py - eps);
-      const hD = getHeight(px, py + eps);
+      const dL = getSdf(adx - eps, ady);
+      const dR = getSdf(adx + eps, ady);
+      const dU = getSdf(adx, ady - eps);
+      const dD = getSdf(adx, ady + eps);
 
-      const dHdx = (hR - hL) / (2.0 * eps);
-      const dHdy = (hD - hU) / (2.0 * eps);
+      const dDdx = (dR - dL) / (2.0 * eps);
+      const dDdy = (dD - dU) / (2.0 * eps);
+      const len = Math.sqrt(dDdx * dDdx + dDdy * dDdy);
 
-      const nLen = Math.sqrt(dHdx * dHdx + dHdy * dHdy + 1.0);
-      const Nx = -dHdx / nLen;
-      const Ny = -dHdy / nLen;
+      const sx = dxC >= 0 ? 1.0 : -1.0;
+      const sy = dyC >= 0 ? 1.0 : -1.0;
+      const dirX = len > 0.0001 ? (dDdx / len) * sx : 0;
+      const dirY = len > 0.0001 ? (dDdy / len) * sy : 0;
+
+      // ─── 2. Monotonic Decay Specular Strength ───
+      const t = Math.max(0, Math.min(1, d / bevelWidth));
+      const strength = 1.0 - smootherstep(0, 1.0, t);
+
+      // ─── 3. Match Normal Vector (Perpendicular to boundary, pointing outward for specular light bounce)
+      const Nx = dirX * strength;
+      const Ny = dirY * strength;
 
       // ─── Specular Lighting ───
       const dot = Nx * lightDirX + Ny * lightDirY;

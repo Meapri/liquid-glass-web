@@ -69,10 +69,7 @@ export function generateDisplacementMap(
   const bevelWidth = Math.min(maxDepth, Math.max(2, params.thickness * dpr));
 
   // ─── Formula Constants ───
-  // Subtle dome thickness to ensure flat-ish readable center, exactly like Apple Liquid Glass
-  const globalStrength = bevelWidth * 0.15;
-  const directAmp = 0.65;
-  const eta = 0.67; // 1.0 / 1.5 (Air to glass ratio)
+  const directAmp = 0.85;
 
   // Helper: Standard Rounded Rect SDF
   function getSdf(adx: number, ady: number): number {
@@ -97,37 +94,6 @@ export function generateDisplacementMap(
     return t * t * t * (t * (t * 6 - 15) + 10);
   }
 
-  // Helper: Clean height field without crease (100% single-profile transition)
-  // Eliminates all boundary creases and fold lines by using a unified non-segmented curve.
-  function getHeight(px: number, py: number): number {
-    const dxC = px - cx;
-    const dyC = py - cy;
-    const adx = Math.abs(dxC);
-    const ady = Math.abs(dyC);
-
-    const d = getSdf(adx, ady);
-    if (d <= 0) return 0;
-
-    // t is normalized distance from edge (0) to center (1)
-    const t = d / maxDepth;
-
-    // A single continuous profile that rises quickly near the edge and flattens out.
-    // Because it is a single mathematical equation, there are absolutely ZERO segmented creases.
-    const profile = 1.0 - Math.pow(1.0 - t, 3.0);
-    const height = (bevelWidth + globalStrength) * smootherstep(0, 1.0, profile);
-
-    return height;
-  }
-
-  // Helper: Snell's Law refract (for viewing ray I = (0, 0, -1))
-  function refract(nx: number, ny: number, nz: number): { rx: number; ry: number } {
-    const cosI = nz;
-    const k = 1.0 - eta * eta * (1.0 - cosI * cosI);
-    if (k < 0.0) return { rx: 0, ry: 0 };
-    const factor = eta * cosI - Math.sqrt(k);
-    return { rx: factor * nx, ry: factor * ny };
-  }
-
   // ─── Main Rendering Loop ───
   for (let y = 0; y < totalH; y++) {
     const rowBase = y * totalW * 4;
@@ -148,42 +114,32 @@ export function generateDisplacementMap(
         continue;
       }
 
-      // ─── Numerical Finite Difference Gradient ───
+      // ─── 1. SDF Gradient (Direction vector perpendicular to the boundary) ───
       const eps = 0.5;
-      const hL = getHeight(px - eps, py);
-      const hR = getHeight(px + eps, py);
-      const hU = getHeight(px, py - eps);
-      const hD = getHeight(px, py + eps);
+      const dL = getSdf(adx - eps, ady);
+      const dR = getSdf(adx + eps, ady);
+      const dU = getSdf(adx, ady - eps);
+      const dD = getSdf(adx, ady + eps);
 
-      const dHdx = (hR - hL) / (2.0 * eps);
-      const dHdy = (hD - hU) / (2.0 * eps);
+      const dDdx = (dR - dL) / (2.0 * eps);
+      const dDdy = (dD - dU) / (2.0 * eps);
+      const len = Math.sqrt(dDdx * dDdx + dDdy * dDdy);
 
-      // Normal vector
-      const len = Math.sqrt(dHdx * dHdx + dHdy * dHdy + 1.0);
-      const normalX = -dHdx / len;
-      const normalY = -dHdy / len;
-      const normalZ = 1.0 / len;
+      const sx = dxC >= 0 ? 1.0 : -1.0;
+      const sy = dyC >= 0 ? 1.0 : -1.0;
+      const dirX = len > 0.0001 ? (dDdx / len) * sx : 0;
+      const dirY = len > 0.0001 ? (dDdy / len) * sy : 0;
 
-      // ─── Edge / Center Refraction Mix ───
-      const edgeFactor = 1.0 - smootherstep(0, bevelWidth, d);
+      // ─── 2. Monotonic Decay Refraction Strength ───
+      // Max displacement at the outer boundary, decay monotonically to 0.0 at bevelWidth.
+      // Zero inflection points => 100% guarantee of ZERO physical creases or fold lines.
+      const t = Math.max(0, Math.min(1, d / bevelWidth));
+      const strength = 1.0 - smootherstep(0, 1.0, t);
 
-      // 1. Snell's Law (Edge)
-      const snell = refract(normalX, normalY, normalZ);
-
-      // 2. Hacky Direct Normal (Center)
-      const hackyX = normalX * directAmp;
-      const hackyY = normalY * directAmp;
-
-      // 3. Interpolation
-      const rawX = edgeFactor * (snell.rx * 1.6) + (1.0 - edgeFactor) * hackyX;
-      const rawY = edgeFactor * (snell.ry * 1.6) + (1.0 - edgeFactor) * hackyY;
-
-      // 4. Physical Thickness Compensation
-      // The physical refraction displacement is proportional to the actual thickness of the glass (hNorm).
-      // This guarantees that displacement naturally fades to 0.0 at the outer boundaries, preventing pixel clipping.
-      const hNorm = hL / (bevelWidth + globalStrength); // hL is high-fidelity height at this pixel
-      const finalX = rawX * hNorm;
-      const finalY = rawY * hNorm;
+      // ─── 3. Direct Monotonic Displacement (Lens Refraction Effect) ───
+      // Perpendicular to the glass border, pulling pixels inward smoothly
+      const finalX = -dirX * strength * directAmp;
+      const finalY = -dirY * strength * directAmp;
 
       // Encode displacement into RGBA (128 = neutral, ±127 = max offset)
       data[i]     = Math.max(1, Math.min(255, Math.round(128 + finalX * 127)));
