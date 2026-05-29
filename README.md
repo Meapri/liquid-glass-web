@@ -50,7 +50,13 @@ is composited by the browser GPU pipeline.
   `.liquid-glass::after` paints a crisp bright segment of the rim that follows
   the cursor and **fades in by distance** (it lights up from ~220px away, not
   only on direct hover), masked to a 1.5px border so only the edge lights up.
-  `.lg-interactive` adds 3D parallax tilt + a "jelly squish" press on top.
+- **Motion, designed as one with the look** — `.lg-interactive` adds Apple's
+  official motion: **interaction illumination** (on press the glow blooms from
+  under the finger and spreads through the element), a **gel-like flex** squish,
+  3D parallax tilt, lift-on-touch, and **materialize in/out**
+  (`.lg-materialize` / `.lg-dematerialize`) that springs the scale/lensing
+  rather than fading. Honors `prefers-reduced-motion` (drops the elastic motion,
+  keeps the light).
 - **Tasteful depth** — a soft, diffuse cool float shadow and a gentle inner top
   sheen give the glass volume (a lozenge floating above content), without the
   hard embossed look of a raised button.

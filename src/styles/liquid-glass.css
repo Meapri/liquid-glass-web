@@ -1,3 +1,11 @@
+/* Registered so it animates smoothly (a transition on a bare custom property is
+ * ignored). --lg-press drives the interaction-illumination spread. */
+@property --lg-press {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 0;
+}
+
 /**
  * Minimal helper class. Apply to elements you'll later attach `new LiquidGlass(el)` to.
  * The engine itself sets backdrop-filter/background-color/border-radius/etc inline,
@@ -79,10 +87,18 @@
   --lg-pointer-y: 0.5;
   --lg-tilt-x: 0deg;
   --lg-tilt-y: 0deg;
-  
+  --lg-press: 0; /* 0 at rest → 1 while pressed (JS sets .lg-pressing) */
+
   /* Apply perspective and tilt */
   transform: perspective(1200px) rotateX(var(--lg-tilt-x)) rotateY(var(--lg-tilt-y));
   transform-style: preserve-3d;
+}
+
+/* Interaction illumination: the press energizes --lg-press 0→1, and the glow
+ * (::before) grows its radius from the press point — "the glow spreads
+ * throughout the element" (Meet Liquid Glass, WWDC25). */
+.lg-interactive.lg-pressing {
+  --lg-press: 1;
 }
 
 /* Hover: Lift the glass closer to the user */
@@ -99,9 +115,13 @@
               box-shadow 300ms cubic-bezier(0.4, 0.0, 0.2, 1.4);
 }
 
-/* 
- * Spatial Surface Sheen
- * A very soft, wide illumination on the glass surface.
+/*
+ * Interaction illumination — "the material illuminates from within … starting
+ * right under your fingertips, the glow spreads throughout the element" (Meet
+ * Liquid Glass, WWDC25). The radial is centred on the press point (falls back to
+ * the hover pointer) and its radius grows with --lg-press, so on press the light
+ * blooms out from the finger. A faint version also shows on hover (resting state
+ * stays quiet, comes to life on touch).
  */
 .lg-interactive::before {
   content: '';
@@ -110,26 +130,34 @@
   border-radius: inherit;
   pointer-events: none;
   opacity: 0;
-  transition: opacity 400ms ease;
+  transition: opacity 400ms ease, --lg-press 500ms cubic-bezier(0.22, 1, 0.36, 1);
   background: radial-gradient(
-    800px circle at calc(var(--lg-pointer-x) * 100%) calc(var(--lg-pointer-y) * 100%),
-    rgba(255, 255, 255, 0.06),
-    transparent 40%
+    calc(34% + var(--lg-press) * 110%) circle
+      at calc(var(--lg-press-x, var(--lg-pointer-x)) * 100%)
+         calc(var(--lg-press-y, var(--lg-pointer-y)) * 100%),
+    rgba(255, 255, 255, calc(0.06 + var(--lg-press) * 0.2)),
+    transparent 72%
   );
   z-index: 10;
 }
 
-/* The dynamic edge light now lives on `.liquid-glass::after` (core, all glass),
- * driven by --lg-glow proximity. Interactive elements just add the surface
- * sheen below on hover. */
+/* Quiet at rest, faint on hover, full on press/touch. */
 .lg-interactive:hover::before {
+  opacity: 0.55;
+}
+.lg-interactive.lg-pressing::before,
+.lg-interactive:active::before {
   opacity: 1;
 }
 
-/* 
- * Entrance animation for newly mounted glass elements
+/*
+ * Materialize in / out — "Instead of fading, Liquid Glass objects materialize in
+ * and out by gradually modulating the light bending and lensing" (Meet Liquid
+ * Glass, WWDC25). We approximate that on the web by springing the scale (which
+ * scales the refraction/lensing with it) rather than relying on opacity alone.
  */
-.lg-entrance {
+.lg-entrance,
+.lg-materialize {
   animation: lg-spring-in 800ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
   opacity: 0;
   transform: translateY(20px) scale(0.95);
@@ -143,5 +171,43 @@
   100% {
     opacity: 1;
     transform: translateY(0) scale(1);
+  }
+}
+
+/* Materialize out — add this class, then remove the element on `animationend`. */
+.lg-dematerialize {
+  animation: lg-spring-out 380ms cubic-bezier(0.4, 0, 1, 1) forwards;
+  pointer-events: none;
+}
+
+@keyframes lg-spring-out {
+  to {
+    opacity: 0;
+    transform: translateY(10px) scale(0.94);
+  }
+}
+
+/*
+ * Reduced Motion — "Reduced Motion decreases the intensity of some effects and
+ * disables any elastic properties for the material." We drop the elastic 3D
+ * tilt, jelly squish, hover lift and spring entrance; the light/illumination
+ * still responds, just without springy motion.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .lg-interactive,
+  .lg-interactive:hover,
+  .lg-interactive:active {
+    transform: none !important;
+    transition: opacity 200ms ease, box-shadow 200ms ease;
+  }
+  .lg-interactive::before {
+    transition: opacity 200ms ease;
+  }
+  .lg-entrance,
+  .lg-materialize,
+  .lg-dematerialize {
+    animation: none;
+    opacity: 1;
+    transform: none;
   }
 }
