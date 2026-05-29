@@ -69,13 +69,10 @@ export function generateDisplacementMap(
   const bevelWidth = Math.min(maxDepth, Math.max(2, params.thickness * dpr));
 
   // ─── Formula Constants ───
-  const globalStrength = maxDepth * 1.2;
+  // Subtle dome thickness to ensure flat-ish readable center, exactly like Apple Liquid Glass
+  const globalStrength = bevelWidth * 0.15;
   const directAmp = 0.65;
   const eta = 0.67; // 1.0 / 1.5 (Air to glass ratio)
-
-  // ─── Precomputed reciprocals ───
-  const invHalfW = 1.0 / halfW;
-  const invHalfH = 1.0 / halfH;
 
   // Helper: Standard Rounded Rect SDF
   function getSdf(adx: number, ady: number): number {
@@ -100,7 +97,8 @@ export function generateDisplacementMap(
     return t * t * t * (t * (t * 6 - 15) + 10);
   }
 
-  // Helper: Clean height field without crease
+  // Helper: Clean height field without crease (100% single SDF-based)
+  // Ensures gradient matches the rounded-rect shape perfectly, eliminating all creases.
   function getHeight(px: number, py: number): number {
     const dxC = px - cx;
     const dyC = py - cy;
@@ -110,15 +108,13 @@ export function generateDisplacementMap(
     const d = getSdf(adx, ady);
     if (d <= 0) return 0;
 
-    // Inside bevel transition
-    const fade = smootherstep(0, bevelWidth, d);
+    // Bevel component: quick rise near the edge
+    const hBevel = bevelWidth * smootherstep(0, bevelWidth, d);
 
-    // Bivariate Paraboloid Dome
-    const u = dxC * invHalfW;
-    const v = dyC * invHalfH;
-    const dome = (1.0 - u * u) * (1.0 - v * v);
+    // Dome component: gentle readable curve over the entire depth
+    const hDome = globalStrength * smootherstep(0, maxDepth, d);
 
-    return (bevelWidth + globalStrength * dome) * fade;
+    return hBevel + hDome;
   }
 
   // Helper: Snell's Law refract (for viewing ray I = (0, 0, -1))
@@ -167,7 +163,6 @@ export function generateDisplacementMap(
       const normalZ = 1.0 / len;
 
       // ─── Edge / Center Refraction Mix ───
-      // Edge factor is 1.0 at outer boundary, smoothly decaying to 0.0 beyond bevelWidth
       const edgeFactor = 1.0 - smootherstep(0, bevelWidth, d);
 
       // 1. Snell's Law (Edge)
@@ -178,8 +173,8 @@ export function generateDisplacementMap(
       const hackyY = normalY * directAmp;
 
       // 3. Interpolation
-      const finalX = edgeFactor * (snell.rx * 1.5) + (1.0 - edgeFactor) * hackyX;
-      const finalY = edgeFactor * (snell.ry * 1.5) + (1.0 - edgeFactor) * hackyY;
+      const finalX = edgeFactor * (snell.rx * 1.6) + (1.0 - edgeFactor) * hackyX;
+      const finalY = edgeFactor * (snell.ry * 1.6) + (1.0 - edgeFactor) * hackyY;
 
       // Encode displacement into RGBA (128 = neutral, ±127 = max offset)
       data[i]     = Math.max(1, Math.min(255, Math.round(128 + finalX * 127)));

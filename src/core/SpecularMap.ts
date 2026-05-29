@@ -48,14 +48,11 @@ export function generateSpecularMap(params: SpecularMapParams): string {
   const bevelWidth = Math.min(maxDepth, Math.max(2, params.thickness * dpr));
 
   // ─── Formula Constants ───
-  const globalStrength = maxDepth * 1.2;
+  // Subtle dome thickness to ensure flat-ish readable center, exactly like Apple Liquid Glass
+  const globalStrength = bevelWidth * 0.15;
   const lightDirX = -0.7071; // Top-Left
   const lightDirY = -0.7071;
   const strengthMult = intensity;
-
-  // ─── Precomputed reciprocals ───
-  const invHalfW = 1.0 / halfW;
-  const invHalfH = 1.0 / halfH;
 
   // Helper: Standard Rounded Rect SDF
   function getSdf(adx: number, ady: number): number {
@@ -80,7 +77,7 @@ export function generateSpecularMap(params: SpecularMapParams): string {
     return t * t * t * (t * (t * 6 - 15) + 10);
   }
 
-  // Helper: Clean height field without crease (exact match with DisplacementMap)
+  // Helper: Clean height field without crease (100% single SDF-based, exact match with DisplacementMap)
   function getHeight(px: number, py: number): number {
     const dxC = px - cx;
     const dyC = py - cy;
@@ -90,13 +87,13 @@ export function generateSpecularMap(params: SpecularMapParams): string {
     const d = getSdf(adx, ady);
     if (d <= 0) return 0;
 
-    const fade = smootherstep(0, bevelWidth, d);
+    // Bevel component: quick rise near the edge
+    const hBevel = bevelWidth * smootherstep(0, bevelWidth, d);
 
-    const u = dxC * invHalfW;
-    const v = dyC * invHalfH;
-    const dome = (1.0 - u * u) * (1.0 - v * v);
+    // Dome component: gentle readable curve over the entire depth
+    const hDome = globalStrength * smootherstep(0, maxDepth, d);
 
-    return (bevelWidth + globalStrength * dome) * fade;
+    return hBevel + hDome;
   }
 
   // ─── Main Rendering Loop ───
