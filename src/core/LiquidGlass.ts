@@ -52,6 +52,34 @@ const VARIANT_BLUR: Record<LiquidGlassVariant, number> = {
   tinted: 4,
 };
 
+/**
+ * The glass edge treatment, layered as one box-shadow. Reading top→bottom:
+ *   1. crisp lit top inner edge (light from above)
+ *   2. hairline rim around the whole perimeter (the "droplet outline")
+ *   3. broad inner top glow — lifts the body so the glass reads luminous, not flat
+ *   4. bottom-lip highlight — the far edge catches light → sense of thickness
+ *   5. faint inner bottom shadow — depth
+ *   6. contact shadow + 7. soft cool float shadow — lifts it off the page
+ * Tuned to match iOS 26 Control Center glass; cool-tinted shadow like Apple's.
+ */
+const EDGE_SHADOW_LIGHT =
+  'inset 0 1px 0.5px rgba(255,255,255,0.9),' +
+  'inset 0 0 0 0.6px rgba(255,255,255,0.5),' +
+  'inset 0 5px 14px rgba(255,255,255,0.18),' +
+  'inset 0 -1.5px 1px rgba(255,255,255,0.28),' +
+  'inset 0 -7px 12px rgba(0,0,0,0.045),' +
+  '0 1px 1.5px rgba(20,24,40,0.06),' +
+  '0 12px 30px rgba(20,24,40,0.16)';
+
+const EDGE_SHADOW_DARK =
+  'inset 0 1px 0.5px rgba(255,255,255,0.35),' +
+  'inset 0 0 0 0.6px rgba(255,255,255,0.16),' +
+  'inset 0 5px 14px rgba(255,255,255,0.07),' +
+  'inset 0 -1.5px 1px rgba(255,255,255,0.10),' +
+  'inset 0 -7px 12px rgba(0,0,0,0.16),' +
+  '0 1px 1.5px rgba(0,0,0,0.30),' +
+  '0 16px 40px rgba(0,0,0,0.50)';
+
 const DEFAULT_OPTIONS: ResolvedOptions = {
   radius: 24,
   thickness: 18,
@@ -64,6 +92,7 @@ const DEFAULT_OPTIONS: ResolvedOptions = {
   tint: null,
   specular: true,
   specularIntensity: 0.85,
+  edges: true,
   applyRadius: true,
   mapPixelRatio: 2,
   quality: 'auto',
@@ -251,6 +280,7 @@ export class LiquidGlass {
     this.filter = null;
     this.element.style.backdropFilter = '';
     (this.element.style as WebkitStyle).webkitBackdropFilter = '';
+    if (this.options.edges) this.element.style.boxShadow = '';
   }
 
   // ── internals ────────────────────────────────────────────────────────────
@@ -413,6 +443,14 @@ export class LiquidGlass {
     const tint = this.options.tint ?? this.variantTint();
     this.element.style.backgroundColor = tint;
     this.element.dataset.scheme = this.resolveScheme();
+    this.applyEdges();
+  }
+
+  /** Scheme-aware rim + inner glow + float shadow that complete the glass look. */
+  private applyEdges(): void {
+    if (!this.options.edges) return;
+    this.element.style.boxShadow =
+      this.resolveScheme() === 'dark' ? EDGE_SHADOW_DARK : EDGE_SHADOW_LIGHT;
   }
 
   private variantTint(): string {
@@ -470,6 +508,7 @@ export class LiquidGlass {
       tint: opts.tint ?? null,
       specular: opts.specular ?? DEFAULT_OPTIONS.specular,
       specularIntensity: opts.specularIntensity ?? DEFAULT_OPTIONS.specularIntensity,
+      edges: opts.edges ?? DEFAULT_OPTIONS.edges,
       applyRadius: opts.applyRadius ?? DEFAULT_OPTIONS.applyRadius,
       mapPixelRatio: opts.mapPixelRatio ?? DEFAULT_OPTIONS.mapPixelRatio,
       quality: opts.quality ?? DEFAULT_OPTIONS.quality,
@@ -495,6 +534,7 @@ export class LiquidGlass {
       tint: o.tint ?? undefined,
       specular: o.specular,
       specularIntensity: o.specularIntensity,
+      edges: o.edges,
       applyRadius: o.applyRadius,
       mapPixelRatio: o.mapPixelRatio,
       quality: o.quality,

@@ -17,8 +17,11 @@ is composited by the browser GPU pipeline.
 - **Three-pass chromatic aberration** — R / G / B channels run through
   feDisplacementMap at slightly different scales (blue refracts more than red,
   matching glass physics).
-- **Baked top-left specular rim** PNG, screen-blended inside the filter — no
-  per-frame JS.
+- **Baked specular rim** PNG (lit top-left edge + a subtle bottom-right lip for
+  thickness), screen-blended inside the filter — no per-frame JS.
+- **Engine-owned edge treatment** — a scheme-aware `box-shadow` stack (bright rim
+  hairline, broad inner top glow that lifts the body, bottom-lip highlight, soft
+  cool float shadow) so a bare element reads as Liquid Glass with no extra CSS.
 - **Shared `MapCache`** keyed by `(w, h, radius, thickness, dpr)` — same-sized
   elements reuse the same data URLs.
 
@@ -56,6 +59,7 @@ new LiquidGlass(document.querySelector('.tab-bar')!, {
 | `tint` | — | explicit CSS color, overrides variant |
 | `specular` | `true` | bake the rim specular highlight |
 | `specularIntensity` | `0.85` | 0–1 |
+| `edges` | `true` | inline glass edge treatment (scheme-aware): bright rim hairline, inner top glow, bottom lip, soft float shadow. `false` to style `box-shadow` yourself |
 | `mapPixelRatio` | `2` | DPR cap for the generated maps |
 | `quality` | `'auto'` | `'high'` \| `'balanced'` \| `'low'` \| `'auto'` — gates the expensive bits (see below) |
 | `lazy` | `false` | defer building the filter until the element scrolls into view (IntersectionObserver) |

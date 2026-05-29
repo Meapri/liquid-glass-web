@@ -25,6 +25,14 @@ export interface LiquidGlassOptions {
   specular?: boolean;
   /** Specular peak intensity (0–1). Default: 0.85. */
   specularIntensity?: number;
+  /**
+   * Apply the glass edge treatment inline (scheme-aware box-shadow): a crisp
+   * bright rim hairline, a broad inner top glow that lifts the body, a subtle
+   * bottom-lip highlight for thickness, and a soft cool float shadow. This is
+   * what makes a bare element read as Liquid Glass without extra CSS. Set false
+   * to manage box-shadow yourself. Default: true.
+   */
+  edges?: boolean;
   /** Apply the computed radius as the element's border-radius. Default: true. */
   applyRadius?: boolean;
   /** Device-pixel-ratio cap for the displacement map (1–3). Default: 2. */
@@ -87,6 +95,7 @@ export interface ResolvedOptions {
   tint: string | null;
   specular: boolean;
   specularIntensity: number;
+  edges: boolean;
   applyRadius: boolean;
   mapPixelRatio: number;
   quality: LiquidGlassQuality;
