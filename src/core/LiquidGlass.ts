@@ -27,8 +27,8 @@ import { getDisplacementMap, getSpecularMap } from './MapCache';
 
 const VARIANT_TINT: Record<LiquidGlassVariant, { light: string; dark: string }> = {
   regular: {
-    light: 'rgba(255, 255, 255, 0.15)', // Highly transparent pure white
-    dark: 'rgba(0, 0, 0, 0.15)',        // Highly transparent pure black (no grey wash)
+    light: 'rgba(255, 255, 255, 0.25)', // Slightly more opaque white for standard Apple frosted glass
+    dark: 'rgba(0, 0, 0, 0.25)',        // Standard Apple dark glass
   },
   clear: {
     light: 'rgba(255, 255, 255, 0.05)',
@@ -36,7 +36,7 @@ const VARIANT_TINT: Record<LiquidGlassVariant, { light: string; dark: string }> 
   },
   tinted: {
     light: 'rgba(255, 255, 255, 0.5)',
-    dark: 'rgba(40, 40, 48, 0.5)',
+    dark: 'rgba(30, 30, 36, 0.5)',
   },
 };
 
@@ -63,24 +63,24 @@ const VARIANT_BLUR: Record<LiquidGlassVariant, number> = {
  * cool float shadow that lifts it off the page. Cool-tinted shadow like Apple's.
  */
 const EDGE_SHADOW_LIGHT =
-  'inset 0 0 0 0.5px rgba(255,255,255,0.2), ' +
-  'inset 0 1px 0 rgba(255,255,255,0.4), ' +
-  '0 12px 32px rgba(0, 0, 0, 0.15), ' +
-  '0 2px 8px rgba(0, 0, 0, 0.05)';
+  'inset 0 0 0 0.5px rgba(255, 255, 255, 0.4), ' + // Sharp hairline rim
+  'inset 0 1px 1px rgba(255, 255, 255, 0.8), ' +   // Soft bright top glare
+  '0 8px 32px rgba(0, 0, 0, 0.08), ' +            // Extremely soft ambient float shadow
+  '0 1px 4px rgba(0, 0, 0, 0.04)';
 
 const EDGE_SHADOW_DARK =
-  'inset 0 0 0 0.5px rgba(255,255,255,0.1), ' +
-  'inset 0 1px 0 rgba(255,255,255,0.2), ' +
-  '0 12px 32px rgba(0, 0, 0, 0.5), ' +            
-  '0 2px 8px rgba(0, 0, 0, 0.2)';
+  'inset 0 0 0 0.5px rgba(255, 255, 255, 0.15), ' +
+  'inset 0 1px 1px rgba(255, 255, 255, 0.25), ' +
+  '0 8px 32px rgba(0, 0, 0, 0.35), ' +            
+  '0 1px 4px rgba(0, 0, 0, 0.15)';
 
 const DEFAULT_OPTIONS: ResolvedOptions = {
   radius: 24,
   thickness: 48,
-  refraction: 64, // Doubled for a much stronger popping out feel
+  refraction: 80, // High refraction for strong Apple spatial effect
   chromaticAberration: 0.03,
-  blur: 4,
-  saturation: 160,
+  blur: 6, // Higher blur for silky smooth diffusion
+  saturation: 180, // High saturation for vibrant colors
   variant: 'regular',
   scheme: 'auto',
   tint: null,

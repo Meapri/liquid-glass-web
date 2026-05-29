@@ -13,25 +13,13 @@
   text-shadow: 0 1px 1px rgba(0, 0, 0, 0.22), 0 0 6px rgba(0, 0, 0, 0.12);
   border-radius: 24px;
   will-change: backdrop-filter, transform;
-  /* Hairlines + soft shadow so the floating layer reads as a physical sheet. */
-  box-shadow:
-    inset 0 0 0 0.5px rgba(255, 255, 255, 0.55),
-    inset 0 1px 0.5px rgba(255, 255, 255, 0.75),
-    inset 0 -1px 0.5px rgba(0, 0, 0, 0.08),
-    0 1px 1px rgba(0, 0, 0, 0.08),
-    0 16px 40px rgba(0, 0, 0, 0.18);
+  /* Shadow is handled entirely by LiquidGlass.ts engine inline to prevent conflicts */
   transition: transform 200ms ease, box-shadow 200ms ease;
 }
 
 .liquid-glass[data-scheme='dark'] {
   color: #fff;
   text-shadow: 0 1px 1px rgba(0, 0, 0, 0.42);
-  box-shadow:
-    inset 0 0 0 0.5px rgba(255, 255, 255, 0.18),
-    inset 0 1px 0.5px rgba(255, 255, 255, 0.22),
-    inset 0 -1px 0.5px rgba(0, 0, 0, 0.2),
-    0 1px 1px rgba(0, 0, 0, 0.28),
-    0 18px 48px rgba(0, 0, 0, 0.5);
 }
 
 /* ==========================================================================
