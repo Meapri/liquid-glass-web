@@ -1,4 +1,14 @@
 export class LiquidInteractive {
+  /**
+   * Attach the pointer-following edge light (+ tilt) to every element matching
+   * `selector` (default `.lg-interactive`). Returns the created instances.
+   */
+  static initAll(selector = '.lg-interactive'): LiquidInteractive[] {
+    return Array.from(document.querySelectorAll<HTMLElement>(selector)).map(
+      (el) => new LiquidInteractive(el)
+    );
+  }
+
   private element: HTMLElement;
   private rafId: number | null = null;
   private isHovered = false;
@@ -56,10 +66,8 @@ export class LiquidInteractive {
     this.currentX += (this.targetX - this.currentX) * 0.15;
     this.currentY += (this.targetY - this.currentY) * 0.15;
 
-    // Apply CSS vars
-    this.element.style.setProperty('--lg-pointer-x', this.currentX.toFixed(4));
-    this.element.style.setProperty('--lg-pointer-y', this.currentY.toFixed(4));
-    
+    // Pointer position vars are owned by the core PointerField; here we only
+    // drive the 3D parallax tilt from the hover position.
     // Map normalized [0, 1] to tilt [-10deg, 10deg]
     // If mouse is at top (y=0), element tilts up (rotateX positive)
     const tiltX = (0.5 - this.currentY) * 20; 
@@ -74,8 +82,6 @@ export class LiquidInteractive {
       // Reset precisely to center to avoid floating point issues
       this.element.style.setProperty('--lg-tilt-x', '0deg');
       this.element.style.setProperty('--lg-tilt-y', '0deg');
-      this.element.style.setProperty('--lg-pointer-x', '0.5');
-      this.element.style.setProperty('--lg-pointer-y', '0.5');
       return;
     }
 

@@ -5,15 +5,15 @@ export type LiquidGlassQuality = 'high' | 'balanced' | 'low' | 'auto';
 export interface LiquidGlassOptions {
   /** Corner radius in px. 'pill' = height/2. 'auto' reads current computed border-radius. Default: 'auto'. */
   radius?: number | 'auto' | 'pill';
-  /** Rim thickness in px — how wide the refracting lens border is. Default: 18. */
+  /** Lens depth (glass "thickness") in px — deeper ⇒ more pronounced edge lensing. Default: 30. */
   thickness?: number;
-  /** Max refraction displacement in px. Default: 18. */
+  /** Max edge refraction displacement in px (capped to ½ the short side). Default: 44. */
   refraction?: number;
-  /** Chromatic dispersion (0–1). Pulls R/G/B apart at the edges. Default: 0.4. */
+  /** Chromatic dispersion (0–1). Pulls R/G/B apart at the edges. Default: 0.03. */
   chromaticAberration?: number;
-  /** Backdrop blur in px (the "frosted" amount). Default: 4. */
+  /** Backdrop blur in px (the "frosted" amount). Default: per variant (regular 10, clear 3, tinted 14). */
   blur?: number;
-  /** Saturation boost as %. 100 = neutral. Default: 160. */
+  /** Saturation boost as %. 100 = neutral. Default: 150. */
   saturation?: number;
   /** Variant — controls baseline tint and behavior. Default: 'regular'. */
   variant?: LiquidGlassVariant;
@@ -21,9 +21,9 @@ export interface LiquidGlassOptions {
   scheme?: LiquidGlassScheme;
   /** Optional explicit tint, overrides variant. CSS color. */
   tint?: string;
-  /** Specular highlight enabled. Default: true. */
+  /** Specular (edge light) enabled. Default: true. */
   specular?: boolean;
-  /** Specular peak intensity (0–1). Default: 0.85. */
+  /** Specular peak intensity (0–1). Default: 0.5. */
   specularIntensity?: number;
   /**
    * Apply the glass edge treatment inline (scheme-aware box-shadow): a crisp

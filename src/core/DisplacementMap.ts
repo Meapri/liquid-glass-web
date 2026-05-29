@@ -1,13 +1,19 @@
 /**
- * Hybrid Refraction Engine — "Hacky Dome" × Snell's Law
+ * Refraction (displacement) map — edge-concentrated lensing via Snell's law.
  *
- * Height field:  h(x,y) = bevelWidth · fade(sdf) + strength · dome(x,y) · fade(sdf)
- *   where fade(d) = d / (d + k)          — C∞-smooth rational edge transition
- *         dome    = (1 - u²)(1 - v²)     — "hacky" bivariate paraboloid (no X-crease)
+ * Apple's Liquid Glass bends light through "responsive lensing along its edges"
+ * while keeping the body optically clear (Meet Liquid Glass, WWDC25). We build
+ * the convex-roundover rim in `SurfaceField`, take its surface normal, refract a
+ * straight-down viewing ray through the air→glass interface (n = 1.5) with the
+ * GLSL `refract()` formula, and encode the resulting lateral shift into the R/G
+ * channels of a displacement map that `feDisplacementMap` resolves on the GPU.
  *
- * Normals are computed via closed-form chain-rule derivatives (zero finite-difference),
- * then fed into GLSL-style refract(I, N, η) for physically correct Snell's law bending.
+ * The map is padded by `refraction` px on every side so the rim can sample
+ * backdrop from *beyond* the element box — matching Apple's note that the glass
+ * "samples content from an area larger than itself".
  */
+
+import { makeSurface } from './SurfaceField';
 
 export interface DisplacementMapParams {
   width: number;
@@ -24,6 +30,20 @@ export interface DisplacementMapResult {
   totalWidth: number;
   totalHeight: number;
 }
+
+/** Index of refraction of the glass body (air = 1.0). */
+const GLASS_IOR = 1.5;
+/** Lens depth at the reference thickness, as a fraction of the half short-side.
+ * Larger ⇒ a deeper, more dimensional lens (thicker-glass volume). */
+const LENS_DEPTH_BASE = 1.0;
+/** `thickness` (CSS px) that maps to the base depth; others scale linearly. */
+const THICKNESS_REF = 30;
+/**
+ * Maps the refracted ray's normalised lateral component onto the encodable
+ * ±1 range so the steepest rim saturates to ~the full `refraction` displacement
+ * while the clear interior stays at the neutral 128.
+ */
+const RIM_GAIN = 1.5;
 
 export function generateDisplacementMap(
   params: DisplacementMapParams
@@ -57,65 +77,25 @@ export function generateDisplacementMap(
   const img = ctx.createImageData(totalW, totalH);
   const data = img.data;
 
-  // ─── Geometry ───
-  const cx = pad + w / 2;
-  const cy = pad + h / 2;
-  const halfW = w / 2;
-  const halfH = h / 2;
-  const innerW = Math.max(0, halfW - r);
-  const innerH = Math.max(0, halfH - r);
+  // ─── Geometry (shared with the specular map) ───
+  // `thickness` scales the lens depth: thicker glass ⇒ deeper lens ⇒ more
+  // pronounced edge lensing (Apple: "thicker material has more pronounced
+  // lensing and refraction"). Clamped so it stays a sensible fraction of size.
+  const halfMin = Math.min(w, h) / 2;
+  const thicknessScale = Math.max(0.3, Math.min(1.6, params.thickness / THICKNESS_REF));
+  const lensDepth = halfMin * LENS_DEPTH_BASE * thicknessScale;
+  const surf = makeSurface({
+    cx: pad + w / 2,
+    cy: pad + h / 2,
+    halfW: w / 2,
+    halfH: h / 2,
+    r,
+    lensDepth,
+  });
 
-  const maxDepth = Math.min(halfW, halfH);
-  
-  // CRITICAL: The exact SDF is mathematically C1-continuous ONLY within a distance 'r' 
-  // from the boundary (the tubular neighborhood theorem). By clamping bevelWidth < r, 
-  // we guarantee that the bevel flattens out before hitting the medial axis, ensuring ZERO creases.
-  const maxBevel = Math.max(2, r * 0.95);
-  const bevelWidth = Math.min(maxBevel, Math.max(2, params.thickness * dpr));
+  // Snell's law, air → glass. Straight-down viewing ray I = (0, 0, -1).
+  const eta = 1 / GLASS_IOR;
 
-  const globalStrength = maxDepth * 0.15; // Very subtle dome
-
-  // Exact distance from the boundary (positive inside)
-  function getSdf(px: number, py: number): number {
-    const adx = Math.abs(px - cx);
-    const ady = Math.abs(py - cy);
-    const distX = halfW - adx;
-    const distY = halfH - ady;
-    if (distX <= 0 || distY <= 0) return 0;
-
-    const qx = adx - innerW;
-    const qy = ady - innerH;
-
-    if (qx > 0 && qy > 0) {
-      const distToCorner = Math.sqrt(qx * qx + qy * qy);
-      if (distToCorner > r) return 0;
-      return r - distToCorner;
-    }
-    return Math.min(distX, distY);
-  }
-
-  function smootherstep(edge0: number, edge1: number, x: number): number {
-    const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
-    return t * t * t * (t * (t * 6 - 15) + 10);
-  }
-
-  function getHeight(px: number, py: number): number {
-    const d = getSdf(px, py);
-    if (d <= 0) return 0;
-
-    const t = Math.max(0, Math.min(1, d / bevelWidth));
-    const hBevel = bevelWidth * smootherstep(0, 1.0, t);
-
-    const dxC = px - cx;
-    const dyC = py - cy;
-    const u = dxC / halfW;
-    const v = dyC / halfH;
-    const hDome = globalStrength * (1.0 - u * u) * (1.0 - v * v);
-
-    return hBevel + hDome;
-  }
-
-  // ─── Main Rendering Loop ───
   for (let y = 0; y < totalH; y++) {
     const rowBase = y * totalW * 4;
     const py = y + 0.5;
@@ -124,49 +104,32 @@ export function generateDisplacementMap(
       const px = x + 0.5;
       const i = rowBase + x * 4;
 
-      const d = getSdf(px, py);
-      if (d <= 0) {
-        data[i] = 128; data[i + 1] = 128; data[i + 2] = 128; data[i + 3] = 255;
+      if (surf.sdf(px, py) <= 0) {
+        data[i] = 128;
+        data[i + 1] = 128;
+        data[i + 2] = 128;
+        data[i + 3] = 255;
         continue;
       }
 
-      // 1. Compute flawless normal via finite differences of the C1 continuous height field
-      const eps = 0.5;
-      const hL = getHeight(px - eps, py);
-      const hR = getHeight(px + eps, py);
-      const hU = getHeight(px, py - eps);
-      const hD = getHeight(px, py + eps);
+      const { nx, ny, nz } = surf.lensNormal(px, py);
 
-      const dHdx = (hR - hL) / (2.0 * eps);
-      const dHdy = (hD - hU) / (2.0 * eps);
-      const len = Math.sqrt(dHdx * dHdx + dHdy * dHdy + 1.0);
+      // refract(I, N, eta) with I = (0,0,-1): I·N = -nz.
+      const dot = -nz;
+      const k = 1 - eta * eta * (1 - dot * dot);
 
-      const nx = -dHdx / len;
-      const ny = -dHdy / len;
-      const nz = 1.0 / len;
-
-      // 2. Snell's Law (Air to Glass)
-      const ex = 0.0, ey = 0.0, ez = -1.0;
-      const eta = 0.667; // IOR 1.5
-      const dot = ex * nx + ey * ny + ez * nz;
-      const k = 1.0 - eta * eta * (1.0 - dot * dot);
-
-      let finalX = 0;
-      let finalY = 0;
-
+      let fx = 0;
+      let fy = 0;
       if (k >= 0) {
-        // Refracted ray vector
-        const rx = eta * ex - (eta * dot + Math.sqrt(k)) * nx;
-        const ry = eta * ey - (eta * dot + Math.sqrt(k)) * ny;
-
-        const amp = 1.5;
-        finalX = rx * amp;
-        finalY = ry * amp;
+        const c = eta * dot + Math.sqrt(k);
+        // I component is 0 in x/y, so the refracted lateral shift is −c·N_xy.
+        fx = -c * nx * RIM_GAIN;
+        fy = -c * ny * RIM_GAIN;
       }
 
-      // Encode displacement into RGBA (128 = neutral, ±127 = max offset)
-      data[i]     = Math.max(1, Math.min(255, Math.round(128 + finalX * 127)));
-      data[i + 1] = Math.max(1, Math.min(255, Math.round(128 + finalY * 127)));
+      // 128 = neutral (no shift); ±127 = full ±scale displacement.
+      data[i] = Math.max(1, Math.min(255, Math.round(128 + fx * 127)));
+      data[i + 1] = Math.max(1, Math.min(255, Math.round(128 + fy * 127)));
       data[i + 2] = 128;
       data[i + 3] = 255;
     }

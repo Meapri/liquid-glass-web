@@ -1,10 +1,22 @@
 /**
- * Specular Rim Map — Analytical Gradient Edition
+ * Specular / light map — crisp, geometry-driven rim highlight.
  *
- * Uses the same hybrid height field as DisplacementMap (rational bevel + paraboloid dome)
- * with fully analytical normals for specular lighting computation.
- * Zero finite-difference calls — everything is chain-rule derivatives.
+ * Apple lights Liquid Glass with an environment: "highlights that respond to
+ * geometry … light to travel around the material, defining its silhouette"
+ * (Meet Liquid Glass, WWDC25). The refraction lens is a broad smooth dome (so it
+ * leaves no inner seam), but the *light* must hug the exact rounded-rect edge to
+ * read as a crisp rim — so the highlight is computed straight from the SDF, in a
+ * thin band at the perimeter, independent of the dome:
+ *
+ *   • primary lobe  — a bright arc where the edge faces the key light (top-left);
+ *   • silhouette rim — a thin continuous trace around the whole edge;
+ *   • back fill      — a soft catch on the opposite edge.
+ *
+ * Everything is confined to a band `rimWidth` wide and faded to nothing on its
+ * inner side, so it is light on the rim, never a refraction boundary.
  */
+
+import { makeSurface } from './SurfaceField';
 
 export interface SpecularMapParams {
   width: number;
@@ -14,6 +26,15 @@ export interface SpecularMapParams {
   pixelRatio: number;
   intensity: number;
 }
+
+// Key light: straight from the top (no left bias, so no corner hot-spot).
+const LIGHT_X = 0;
+const LIGHT_Y = -1;
+
+const PRIMARY_EXP = 3; // broad top emphasis (brightest at the top edge)
+const W_PRIMARY = 0.6; // gentle static top edge — the dynamic cursor light leads
+const W_RIM = 0.1; // faint continuous line tracing the rest of the silhouette
+const GAIN = 255;
 
 export function generateSpecularMap(params: SpecularMapParams): string {
   const dpr = params.pixelRatio;
@@ -31,120 +52,49 @@ export function generateSpecularMap(params: SpecularMapParams): string {
     canvas.height = h;
   }
   const ctx = (canvas as HTMLCanvasElement | OffscreenCanvas).getContext('2d') as
-    CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+    | CanvasRenderingContext2D
+    | OffscreenCanvasRenderingContext2D;
 
   const imgData = ctx.createImageData(w, h);
   const data = imgData.data;
 
-  // ─── Geometry (must match DisplacementMap exactly) ───
-  const halfW = w / 2;
-  const halfH = h / 2;
-  const cx = halfW;
-  const cy = halfH;
-  const innerW = Math.max(0, halfW - r);
-  const innerH = Math.max(0, halfH - r);
+  // Razor-thin edge line — Apple defines the silhouette with a crisp light at the
+  // very rim, not a soft wide bevel. ~2 CSS px, capped under the corner radius.
+  const lineW = Math.min(2.2 * dpr, Math.max(2, r * 0.6));
+  const surf = makeSurface({ cx: w / 2, cy: h / 2, halfW: w / 2, halfH: h / 2, r });
 
-  const maxDepth = Math.min(halfW, halfH);
-  
-  // CRITICAL: See DisplacementMap.ts. Clamp bevelWidth to guarantee C1 continuity.
-  const maxBevel = Math.max(2, r * 0.95);
-  const bevelWidth = Math.min(maxBevel, Math.max(2, params.thickness * dpr));
-  const globalStrength = maxDepth * 0.15; // Very subtle dome
-
-  // ─── Formula Constants ───
-  const lightDirX = -0.7071; // Top-Left
-  const lightDirY = -0.7071;
-  const strengthMult = intensity;
-
-  // Exact distance from the boundary (positive inside)
-  function getSdf(px: number, py: number): number {
-    const adx = Math.abs(px - cx);
-    const ady = Math.abs(py - cy);
-    const distX = halfW - adx;
-    const distY = halfH - ady;
-    if (distX <= 0 || distY <= 0) return 0;
-
-    const qx = adx - innerW;
-    const qy = ady - innerH;
-
-    if (qx > 0 && qy > 0) {
-      const distToCorner = Math.sqrt(qx * qx + qy * qy);
-      if (distToCorner > r) return 0;
-      return r - distToCorner;
-    }
-    return Math.min(distX, distY);
-  }
-
-  function smootherstep(edge0: number, edge1: number, x: number): number {
-    const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
-    return t * t * t * (t * (t * 6 - 15) + 10);
-  }
-
-  function getHeight(px: number, py: number): number {
-    const d = getSdf(px, py);
-    if (d <= 0) return 0;
-
-    const t = Math.max(0, Math.min(1, d / bevelWidth));
-    const hBevel = bevelWidth * smootherstep(0, 1.0, t);
-
-    const dxC = px - cx;
-    const dyC = py - cy;
-    const u = dxC / halfW;
-    const v = dyC / halfH;
-    const hDome = globalStrength * (1.0 - u * u) * (1.0 - v * v);
-
-    return hBevel + hDome;
-  }
-
-  // ─── Main Rendering Loop ───
   for (let y = 0; y < h; y++) {
-    const py = y + 0.5;
-
     for (let x = 0; x < w; x++) {
       const px = x + 0.5;
+      const py = y + 0.5;
+
+      const d = surf.sdf(px, py);
+      if (d <= 0 || d >= lineW) continue;
+
+      // Outward in-plane edge normal = −∇(sdf) (the SDF rises going inward).
+      const eps = 0.75;
+      const gx = (surf.sdf(px + eps, py) - surf.sdf(px - eps, py)) / (2 * eps);
+      const gy = (surf.sdf(px, py + eps) - surf.sdf(px, py - eps)) / (2 * eps);
+      const gl = Math.sqrt(gx * gx + gy * gy) || 1;
+      const ox = -gx / gl;
+      const oy = -gy / gl;
+
+      const facing = ox * LIGHT_X + oy * LIGHT_Y;
+
+      // Sharp falloff: brightest right at the edge, gone within the thin line.
+      const t = 1 - d / lineW;
+      const fade = t * t;
+
+      const primary = facing > 0 ? Math.pow(facing, PRIMARY_EXP) : 0;
+      const s = (W_PRIMARY * primary + W_RIM) * fade;
+
+      const a = Math.min(255, s * intensity * GAIN);
+      if (a <= 0) continue;
       const idx = (y * w + x) * 4;
-
-      const d = getSdf(px, py);
-      if (d <= 0) continue;
-
-      // Compute flawless normal via finite differences
-      const eps = 0.5;
-      const hL = getHeight(px - eps, py);
-      const hR = getHeight(px + eps, py);
-      const hU = getHeight(px, py - eps);
-      const hD = getHeight(px, py + eps);
-
-      const dHdx = (hR - hL) / (2.0 * eps);
-      const dHdy = (hD - hU) / (2.0 * eps);
-      const len = Math.sqrt(dHdx * dHdx + dHdy * dHdy + 1.0);
-
-      const nx = -dHdx / len;
-      const ny = -dHdy / len;
-      const nz = 1.0 / len;
-
-      // ─── Specular Lighting ───
-      const dot = nx * lightDirX + ny * lightDirY;
-      let totalSpec = 0;
-
-      if (dot > 0) {
-        const spec = Math.pow(dot, 16);
-        const rim = Math.pow(1.0 - Math.abs(dot), 4);
-        totalSpec = spec * 180 + rim * spec * 75;
-      }
-
-      // High-frequency caustic glare
-      if (dot > 0.85) {
-        const highFreq = Math.pow((dot - 0.85) * 6.666, 8);
-        totalSpec += highFreq * 100;
-      }
-
-      if (totalSpec > 0) {
-        const outA = Math.min(255, totalSpec * strengthMult);
-        data[idx] = 255;
-        data[idx + 1] = 255;
-        data[idx + 2] = 255;
-        data[idx + 3] = outA;
-      }
+      data[idx] = 255;
+      data[idx + 1] = 255;
+      data[idx + 2] = 255;
+      data[idx + 3] = a;
     }
   }
 

@@ -15,6 +15,42 @@
   will-change: backdrop-filter, transform;
   /* Shadow is handled entirely by LiquidGlass.ts engine inline to prevent conflicts */
   transition: transform 200ms ease, box-shadow 200ms ease;
+
+  /* Pointer-light field (set by the core PointerField for every glass element). */
+  --lg-pointer-x: 0.5;
+  --lg-pointer-y: 0.5;
+  --lg-glow: 0;
+}
+
+/*
+ * Dynamic edge light (core, all glass) — the environment light "travels around
+ * the material, defining its silhouette" (Meet Liquid Glass, WWDC25). A crisp
+ * bright segment of the rim tracks the cursor; its strength is the proximity
+ * --lg-glow, so it lights up as the cursor approaches from a distance and fades
+ * out when far. Painted into a thin border and masked so ONLY the edge lights.
+ */
+.liquid-glass::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: var(--lg-glow, 0);
+  transition: opacity 220ms ease;
+
+  border: 1.5px solid transparent;
+  background: radial-gradient(
+    220px circle at calc(var(--lg-pointer-x) * 100%) calc(var(--lg-pointer-y) * 100%),
+    rgba(255, 255, 255, 0.95) 0%,
+    rgba(255, 255, 255, 0.5) 18%,
+    transparent 46%
+  ) border-box;
+
+  -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0) border-box;
+  -webkit-mask-composite: destination-out;
+  mask-composite: exclude;
+
+  z-index: 10;
 }
 
 .liquid-glass[data-scheme='dark'] {
@@ -83,38 +119,10 @@
   z-index: 10;
 }
 
-/* 
- * Spatial Glowing Edge (Liquid Glass Standard)
- * Illuminates a 1px border dynamically based on mouse position.
- * Fixed with foolproof padding-box / border-box mask for cross-browser compatibility.
- */
-.lg-interactive::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 400ms ease;
-  
-  /* Render a 1px transparent border, but paint the gradient into it */
-  border: 1px solid transparent;
-  background: radial-gradient(
-    300px circle at calc(var(--lg-pointer-x) * 100%) calc(var(--lg-pointer-y) * 100%),
-    rgba(255, 255, 255, 0.6),
-    transparent 40%
-  ) border-box; /* Must be border-box so it extends into the border */
-  
-  /* Mask out the inside so ONLY the border remains visible */
-  -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0) border-box;
-  -webkit-mask-composite: destination-out;
-  mask-composite: exclude;
-  
-  z-index: 10;
-}
-
-.lg-interactive:hover::before,
-.lg-interactive:hover::after {
+/* The dynamic edge light now lives on `.liquid-glass::after` (core, all glass),
+ * driven by --lg-glow proximity. Interactive elements just add the surface
+ * sheen below on hover. */
+.lg-interactive:hover::before {
   opacity: 1;
 }
 
