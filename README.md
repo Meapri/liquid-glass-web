@@ -8,14 +8,15 @@ is composited by the browser GPU pipeline.
 
 ## Approach
 
-- **Seam-free separable lens** displacement map (canvas-generated). A per-axis
-  squircle profile `r³ / (1 − r⁴)^0.75` + gentle body dome is applied separably
-  (x-displacement from |x|, y from |y|), so the whole element refracts like one
-  thick glass droplet — gently in the centre, sharply at the rim. Because each
-  axis eases through zero at its centre line, the field is smooth everywhere:
-  **no diagonal "X" seam** (that was a nearest-edge artifact; real Liquid Glass
-  has none). Strong refraction over text stays clean because the backdrop is
-  blurred *before* it's bent.
+- **Physically-based refraction** (Snell's law) displacement map, the way Apple's
+  Liquid Glass works: a convex-squircle bevel surface `h = ⁴√(1 − (1 − x)⁴)` over
+  a rim band of width `thickness`; the surface normal is the analytic SDF
+  gradient (perpendicular to the nearest edge); a straight-down ray refracts
+  through it (glass n = 1.5) and the lateral shift `sin(θ₁ − θ₂)` is the
+  displacement (precomputed as a 1-D Snell lookup). The bend lives in the rim
+  band — the **centre stays optically clear** — so the gradient's medial seam
+  sits in the cleared centre and never shows (no diagonal "X"). Strong refraction
+  over text stays clean because the backdrop is blurred *before* it's bent.
 - **Padded displacement canvas** (`±refraction` px on each side) so the rim
   can sample real backdrop beyond the element box without clipping.
 - **Three-pass chromatic aberration** — R / G / B channels run through

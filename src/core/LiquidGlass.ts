@@ -55,34 +55,28 @@ const VARIANT_BLUR: Record<LiquidGlassVariant, number> = {
 };
 
 /**
- * The glass edge treatment, layered as one box-shadow. Apple's Control Center
- * tiles read dimensional from a crisp, defined bright rim (the "droplet
- * outline") running the full perimeter — brightest where it meets the light on
- * top — with the body sitting slightly darker inside it, like a rounded glass
- * lip. It's a clean 1px rim, not a thick glossy bevel. Reading top→bottom:
- *   1. crisp full-perimeter rim — the defined glass edge
- *   2. brighter top lip — the rounded edge catching the overhead light
- *   3. soft bottom lip — a hint of thickness on the far edge
- *   4. contact shadow + 5. soft cool float shadow — lifts it off the page
- * Tuned against iOS 26 / macOS Tahoe Control Center; cool-tinted shadow.
+ * The glass edge treatment, layered as one box-shadow. The edge dimensionality
+ * is carried OPTICALLY — by the baked specular rim (light wrapping the curved
+ * edge) plus the refraction band — not by a drawn outline. So box-shadow only
+ * adds a whisper of a hairline (a baseline so the edge still reads over flat
+ * backdrops where there's nothing to refract), a faint top lip, and the soft
+ * cool float shadow that lifts it off the page. Cool-tinted shadow like Apple's.
  */
 const EDGE_SHADOW_LIGHT =
-  'inset 0 0 0 1px rgba(255,255,255,0.50),' +
-  'inset 0 1.5px 1px rgba(255,255,255,0.55),' +
-  'inset 0 -1px 1px rgba(255,255,255,0.18),' +
+  'inset 0 0 0 0.5px rgba(255,255,255,0.18),' +
+  'inset 0 1px 1px rgba(255,255,255,0.22),' +
   '0 1px 2px rgba(20,24,40,0.06),' +
-  '0 10px 28px rgba(20,24,40,0.15)';
+  '0 12px 30px rgba(20,24,40,0.16)';
 
 const EDGE_SHADOW_DARK =
-  'inset 0 0 0 1px rgba(255,255,255,0.40),' +
-  'inset 0 1.5px 1px rgba(255,255,255,0.34),' +
-  'inset 0 -1px 1px rgba(255,255,255,0.12),' +
+  'inset 0 0 0 0.5px rgba(255,255,255,0.10),' +
+  'inset 0 1px 1px rgba(255,255,255,0.12),' +
   '0 1px 2px rgba(0,0,0,0.28),' +
   '0 14px 34px rgba(0,0,0,0.46)';
 
 const DEFAULT_OPTIONS: ResolvedOptions = {
   radius: 24,
-  thickness: 18,
+  thickness: 26,
   refraction: 30,
   chromaticAberration: 0.22,
   blur: 12,
@@ -91,7 +85,7 @@ const DEFAULT_OPTIONS: ResolvedOptions = {
   scheme: 'auto',
   tint: null,
   specular: true,
-  specularIntensity: 0.85,
+  specularIntensity: 1.0,
   edges: true,
   applyRadius: true,
   mapPixelRatio: 2,

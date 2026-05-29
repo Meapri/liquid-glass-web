@@ -59,16 +59,15 @@ export function generateSpecularMap(params: SpecularMapParams): string {
   roundRectPath(ctx, 0.5, 0.5, w - 1, h - 1, r - 0.5);
   ctx.stroke();
 
-  // 2. Anisotropic mask — brightest on the lit (top-left) edge, fading through
-  //    the shadowed middle, then a subtle return at the far bottom-right corner.
-  //    That far "lip" highlight is what gives Liquid Glass its sense of physical
-  //    thickness (the edge catches light on both sides, not just the top).
+  // 2. Lighting mask — the curved edge catches light all the way round (this rim
+  //    IS the edge dimensionality, optically, instead of a drawn outline), with a
+  //    directional bias: brightest where it meets the light at top-left, but
+  //    staying clearly present along the bottom/right so the whole edge reads.
   ctx.globalCompositeOperation = 'destination-in';
   const litGrad = ctx.createLinearGradient(0, 0, w, h);
-  litGrad.addColorStop(0.0, 'rgba(0, 0, 0, 1.0)');   // lit top-left edge — full
-  litGrad.addColorStop(0.5, 'rgba(0, 0, 0, 0.42)');
-  litGrad.addColorStop(0.82, 'rgba(0, 0, 0, 0.08)'); // shadowed middle
-  litGrad.addColorStop(1.0, 'rgba(0, 0, 0, 0.30)');  // bottom-right lip catches light
+  litGrad.addColorStop(0.0, 'rgba(0, 0, 0, 1.0)');  // brightest at the lit (top-left) edge
+  litGrad.addColorStop(0.5, 'rgba(0, 0, 0, 0.66)');
+  litGrad.addColorStop(1.0, 'rgba(0, 0, 0, 0.52)'); // rim stays present round the far edge
   ctx.fillStyle = litGrad;
   ctx.fillRect(0, 0, w, h);
 

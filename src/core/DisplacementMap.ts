@@ -1,27 +1,27 @@
 /**
- * Convex-squircle lens displacement map.
+ * Physically-based refraction displacement map (Snell's law).
  *
- * Models the glass as a single thick convex lens spanning the WHOLE surface:
- * the backdrop bends gently through the centre and ramps up sharply toward the
- * rim, so the element reads as one solid glass plate (like Apple's Control
- * Center tiles) rather than a flat panel with a thin lit edge. The height
- * profile follows a squircle (super-ellipse, exponent 4) plus a gentle body
- * dome. Refraction is computed from the surface slope at each pixel:
+ * Models the glass as a real refracting solid, the way Apple's Liquid Glass and
+ * kube.io's derivation do — not an ad-hoc displacement ramp:
  *
- *   r        = 1 - edgeDist/maxDepth                        (0 at centre, 1 at rim)
- *   slope(r) = r³ / (1 - r⁴)^(3/4)                          (squircle derivative)
- *   bump     = min(1, slope·k + r²·inner)                   (rim spike + body dome)
+ *   1. Surface  — a convex-squircle bevel, h = ⁴√(1 − (1 − x)⁴) over the distance
+ *                 into a rim band of width `thickness`. Flat across the centre,
+ *                 curving steeply at the rim. (Beyond the band the surface is
+ *                 flat, so the centre is optically clear.)
+ *   2. Normal   — the analytic gradient of the rounded-rect SDF: perpendicular to
+ *                 the nearest edge (radial out of the corner arcs, axis-aligned
+ *                 along the straight edges).
+ *   3. Refract  — a straight-down view ray refracts through that surface by
+ *                 Snell's law (glass n = 1.5); the lateral shift sin(θ₁ − θ₂) is
+ *                 the displacement magnitude, applied INWARD (magnifying).
  *
- * The result bends light across the whole body and spikes at the rim — the
- * thick-glass refraction Apple's iOS 26 / macOS Tahoe Liquid Glass shows.
+ * Because the bend lives only in the rim band, the SDF gradient's medial seam
+ * (which is in the cleared centre) never shows — there is no diagonal "X".
+ * The magnitude is precomputed as a 1-D Snell lookup since it depends only on
+ * depth into the bevel.
  *
- * Direction is INWARD (toward the shape centre perpendicular to nearest edge),
- * so the lens magnifies the backdrop.
- *
- * The canvas is **padded** by ±refraction px on each side so that the
- * displacement map's rim values can be sampled without being clipped by the
- * SVG filter region. The padding is encoded as neutral (128) and gets a
- * matching alpha 0 outside the shape.
+ * The canvas is **padded** by ±refraction px on each side so the rim values are
+ * not clipped by the SVG filter region; padding is neutral (128) with alpha 0.
  */
 
 export interface DisplacementMapParams {
@@ -82,29 +82,36 @@ export function generateDisplacementMap(
 
   const innerW = halfW - r;
   const innerH = halfH - r;
+  const maxDepth = Math.min(halfW, halfH);
 
-  // Body-refraction strength of the per-axis lens profile (0 at centre → up to
-  // 1 at the rim), added on top of the squircle edge spike so the glass refracts
-  // through its whole body, not only at the rim.
-  const INNER_REFRACT = 0.22;
+  // The glass surface is a convex-squircle bevel: flat across the centre, curving
+  // down steeply over a band of width `bevel` at the rim — the profile Apple's
+  // Liquid Glass and kube.io's physics derivation use, y = ⁴√(1 − (1 − x)⁴).
+  // Refraction therefore lives in that rim band and the centre stays optically
+  // clear, so the edge-normal's medial seam (which sits in the cleared centre)
+  // never shows.
+  const bevel = Math.min(maxDepth, Math.max(2, params.thickness * dpr));
 
-  // Per-axis convex-lens profile: squircle slope (sharp rim) + a gentle body
-  // dome. It is applied SEPARABLY — x-displacement uses |x| only, y uses |y|
-  // only — so the field is smooth everywhere and each axis eases through zero at
-  // its centre line. There is NO medial axis where the direction flips, hence no
-  // diagonal "X" seam (that was an artifact of nearest-edge displacement; real
-  // Liquid Glass shows none).
-  const lens = (n: number): number => {
-    const c = n < 0.9999 ? n : 0.9999; // guard the (1 − n⁴) term
-    const c2 = c * c;
-    const s = Math.sqrt(1 - c2 * c2); // (1 − n⁴)^0.5
-    const slope = (c2 * c) / (s * Math.sqrt(s)); // n³ / (1 − n⁴)^0.75
-    const raw = slope * 0.55 + c2 * INNER_REFRACT;
-    return raw < 1 ? raw : 1;
-  };
-
-  // Encoded displacement below this rounds to neutral (128) — skip those pixels.
-  const NEUTRAL = 0.004;
+  // Per-pixel magnitude = the lateral shift a straight-down ray gains refracting
+  // through that surface, by Snell's law (glass n = 1.5) — NOT a linear ramp.
+  // It depends only on the surface slope, i.e. only on the normalized depth into
+  // the bevel, so precompute it once as a 1-D lookup:
+  //   slope = (1−t)³ / (1 − (1−t)⁴)^0.75   (squircle derivative; t = edge/bevel)
+  //   θ₁ = atan(slope) ;  θ₂ = asin(sin θ₁ / n) ;  shift = sin(θ₁ − θ₂)
+  // normalized so the steepest (rim) shift maps to 1.
+  const N = 1.5;
+  const LUT = 256;
+  const mag = new Float32Array(LUT);
+  const MMAX = Math.sin(Math.PI / 2 - Math.asin(1 / N)); // shift at a vertical rim
+  for (let i = 0; i < LUT; i++) {
+    const rn = 1 - i / (LUT - 1); // 1 at rim → 0 at bevel inner
+    const rn4 = rn * rn * rn * rn;
+    const s = Math.sqrt(rn4 < 0.999999 ? 1 - rn4 : 1e-6);
+    const slope = (rn * rn * rn) / (s * Math.sqrt(s));
+    const th1 = Math.atan(slope);
+    const th2 = Math.asin(Math.min(1, Math.sin(th1) / N));
+    mag[i] = Math.sin(th1 - th2) / MMAX;
+  }
 
   for (let y = 0; y < totalH; y++) {
     const dy = y + 0.5 - cy;
@@ -125,8 +132,6 @@ export function generateDisplacementMap(
 
     const qy = ady - innerH;
     const sy = dy < 0 ? -1 : 1;
-    // Vertical lens term depends only on the row — compute once.
-    const by = lens(ady / halfH);
 
     for (let x = 0; x < totalW; x++) {
       const i = rowBase + x * 4;
@@ -134,12 +139,14 @@ export function generateDisplacementMap(
       const adx = dx < 0 ? -dx : dx;
       const qx = adx - innerW;
 
-      // Rounded-rect SDF — only to decide inside vs outside (alpha + corners).
+      // Rounded-rect SDF (signed distance) + the pieces of its analytic gradient.
       const inside = (qx > qy ? qx : qy) < 0 ? (qx > qy ? qx : qy) : 0;
       const ox = qx > 0 ? qx : 0;
       const oy = qy > 0 ? qy : 0;
       const outside = ox || oy ? Math.sqrt(ox * ox + oy * oy) : 0;
-      if (inside + outside - r >= 0) {
+      const edge = r - inside - outside; // depth inside the shape (>0 inside)
+
+      if (edge <= 0) {
         // Outside the shape — neutral, no alpha.
         data[i] = 128;
         data[i + 1] = 128;
@@ -147,10 +154,8 @@ export function generateDisplacementMap(
         data[i + 3] = 0;
         continue;
       }
-
-      const bx = lens(adx / halfW);
-      if (bx < NEUTRAL && by < NEUTRAL) {
-        // Clear centre — inside the shape but no displacement.
+      if (edge >= bevel) {
+        // Flat clear centre (beyond the bevel) — part of the shape, no bend.
         data[i] = 128;
         data[i + 1] = 128;
         data[i + 2] = 128;
@@ -158,10 +163,40 @@ export function generateDisplacementMap(
         continue;
       }
 
-      // Each axis displaces toward centre (magnify). |disp| ≤ 1 so
-      // 128 ± disp·127 stays in [1, 255] — no clamp needed.
-      data[i] = Math.round(128 - (dx < 0 ? -1 : 1) * bx * 127);
-      data[i + 1] = Math.round(128 - sy * by * 127);
+      const m = mag[((edge / bevel) * (LUT - 1)) | 0];
+      if (m < 0.004) {
+        data[i] = 128;
+        data[i + 1] = 128;
+        data[i + 2] = 128;
+        data[i + 3] = 255;
+        continue;
+      }
+
+      // Outward unit normal = analytic SDF gradient: radial out of the corner arc
+      // (ox/oy > 0), axis-aligned along the straight edges, blended across the
+      // medial diagonal so it stays seamless.
+      const sx = dx < 0 ? -1 : 1;
+      let normX: number;
+      let normY: number;
+      if (ox || oy) {
+        const olen = outside || 1;
+        normX = (ox / olen) * sx;
+        normY = (oy / olen) * sy;
+      } else {
+        const e = 0.75;
+        let bx = qx - qy + e;
+        bx = bx < 0 ? 0 : bx > 2 * e ? 2 * e : bx;
+        let byy = qy - qx + e;
+        byy = byy < 0 ? 0 : byy > 2 * e ? 2 * e : byy;
+        const nl = Math.sqrt(bx * bx + byy * byy) || 1;
+        normX = (bx / nl) * sx;
+        normY = (byy / nl) * sy;
+      }
+
+      // Refract inward (toward centre) → magnify the backdrop through the lens.
+      // |disp| ≤ 1, so 128 ± disp·127 stays in [1, 255] — no clamp needed.
+      data[i] = Math.round(128 - m * normX * 127);
+      data[i + 1] = Math.round(128 - m * normY * 127);
       data[i + 2] = 128;
       data[i + 3] = 255;
     }
