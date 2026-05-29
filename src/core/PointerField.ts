@@ -20,13 +20,26 @@ const elements = new Set<HTMLElement>();
 const visible = new Set<HTMLElement>();
 /** Last glow written per element, so we can skip elements that stay dark. */
 const lastGlow = new WeakMap<HTMLElement, number>();
+/** Last illumination written per element (same skip optimisation). */
+const lastIllum = new WeakMap<HTMLElement, number>();
 let rafId = 0;
 let pointerX = -1e6;
 let pointerY = -1e6;
 let listening = false;
 
-/** Distance (px) beyond an element's box at which the light fades to zero. */
+/** Distance (px) beyond an element's box at which the edge light fades to zero. */
 const FALLOFF = 220;
+/** Distance (px) over which a press illuminates *nearby* glass (the spread). */
+const SPREAD = 280;
+
+// Interaction illumination: a press lights the pressed element and spreads onto
+// nearby glass — "the glow spreads throughout the element and onto any Liquid
+// Glass elements nearby" (Meet Liquid Glass, WWDC25).
+let pressX = 0;
+let pressY = 0;
+let pressTarget = 0; // 1 while held, 0 on release
+let pressEnergy = 0; // eased toward pressTarget
+let pressRaf = 0;
 
 let observer: IntersectionObserver | null = null;
 function ensureObserver(): IntersectionObserver | null {
@@ -118,6 +131,64 @@ function onPointerGone(): void {
   schedule();
 }
 
+function onPressDown(e: PointerEvent): void {
+  pressX = e.clientX;
+  pressY = e.clientY;
+  pressTarget = 1;
+  if (!pressRaf) pressRaf = requestAnimationFrame(pressTick);
+}
+
+function onPressUp(): void {
+  pressTarget = 0;
+  if (!pressRaf) pressRaf = requestAnimationFrame(pressTick);
+}
+
+/** Ease the press energy and paint the illumination spread until it settles. */
+function pressTick(): void {
+  pressRaf = 0;
+  const rising = pressTarget > pressEnergy;
+  pressEnergy += (pressTarget - pressEnergy) * (rising ? 0.4 : 0.12);
+  if (pressEnergy < 0.004 && pressTarget === 0) pressEnergy = 0;
+
+  // Read all rects, then write — same batching as flush() to avoid reflow thrash.
+  const els: HTMLElement[] = [];
+  const rects: DOMRect[] = [];
+  for (const el of visible) {
+    if (!el.isConnected) {
+      visible.delete(el);
+      elements.delete(el);
+      continue;
+    }
+    els.push(el);
+    rects.push(el.getBoundingClientRect());
+  }
+  for (let i = 0; i < els.length; i++) {
+    const el = els[i];
+    const r = rects[i];
+    if (r.width === 0 || r.height === 0) continue;
+
+    const dx = Math.max(r.left - pressX, 0, pressX - r.right);
+    const dy = Math.max(r.top - pressY, 0, pressY - r.bottom);
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    // Pressed element (dist 0) gets the full energy; neighbours fall off over
+    // SPREAD with a soft curve so the spread reads as a gentle wash.
+    const prox = Math.max(0, 1 - dist / SPREAD);
+    const illum = pressEnergy * prox * prox;
+
+    if (illum === 0 && (lastIllum.get(el) ?? 0) === 0) continue;
+    lastIllum.set(el, illum);
+
+    // Illumination origin in element-local coords (the press point / nearest side).
+    const ix = Math.max(0, Math.min(1, (pressX - r.left) / r.width));
+    const iy = Math.max(0, Math.min(1, (pressY - r.top) / r.height));
+    el.style.setProperty('--lg-illum', illum.toFixed(4));
+    el.style.setProperty('--lg-illum-x', ix.toFixed(4));
+    el.style.setProperty('--lg-illum-y', iy.toFixed(4));
+  }
+
+  if (pressEnergy > 0 || pressTarget > 0) pressRaf = requestAnimationFrame(pressTick);
+}
+
 export function registerPointerLight(el: HTMLElement): void {
   if (typeof window === 'undefined') return;
   elements.add(el);
@@ -128,6 +199,9 @@ export function registerPointerLight(el: HTMLElement): void {
     window.addEventListener('pointermove', onPointerMove, { passive: true });
     window.addEventListener('blur', onPointerGone);
     document.addEventListener('pointerleave', onPointerGone);
+    window.addEventListener('pointerdown', onPressDown, { passive: true });
+    window.addEventListener('pointerup', onPressUp, { passive: true });
+    window.addEventListener('pointercancel', onPressUp, { passive: true });
     listening = true;
   }
   schedule();
@@ -140,4 +214,7 @@ export function unregisterPointerLight(el: HTMLElement): void {
   el.style.removeProperty('--lg-glow');
   el.style.removeProperty('--lg-pointer-x');
   el.style.removeProperty('--lg-pointer-y');
+  el.style.removeProperty('--lg-illum');
+  el.style.removeProperty('--lg-illum-x');
+  el.style.removeProperty('--lg-illum-y');
 }

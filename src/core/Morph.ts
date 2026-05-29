@@ -177,3 +177,159 @@ export class LiquidMenu {
     this.menu.style.transform = '';
   }
 }
+
+export interface LiquidSheetOptions {
+  /** Dismiss when the dimming scrim is clicked / Escape pressed. Default true. */
+  dismissOnScrim?: boolean;
+  /** Gap from the bottom edge, in px. Default 24. */
+  bottomGap?: number;
+}
+
+/**
+ * LiquidSheet — a sheet/modal that materializes up from the bottom and grows to
+ * full size, over a dimming scrim. Sheets present Liquid Glass, and the material
+ * "materializes in and out by … modulating the light bending and lensing" while
+ * morphing "to larger sizes … deeper shadows, more pronounced lensing" (Meet
+ * Liquid Glass, WWDC25). The Clear-style transparency needs "a dimming layer to
+ * darken the underlying content" — that's the scrim.
+ *
+ * The sheet element should be a `.liquid-glass` (give it its own `LiquidGlass`).
+ */
+export class LiquidSheet {
+  readonly sheet: HTMLElement;
+  private scrim: HTMLDivElement;
+  private gap: number;
+  private dismissOnScrim: boolean;
+  private open_ = false;
+  private openedAt = 0;
+  private anim: Animation | null = null;
+  private scrimAnim: Animation | null = null;
+  private reduceMotion: boolean;
+
+  constructor(sheet: HTMLElement, options: LiquidSheetOptions = {}) {
+    this.sheet = sheet;
+    this.gap = options.bottomGap ?? 24;
+    this.dismissOnScrim = options.dismissOnScrim ?? true;
+    this.reduceMotion =
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    sheet.style.position = 'fixed';
+    sheet.style.left = '50%';
+    sheet.style.bottom = `${this.gap}px`;
+    sheet.style.transform = 'translateX(-50%)';
+    sheet.style.visibility = 'hidden';
+    sheet.style.zIndex = '1001';
+    sheet.dataset.lgSheet = 'closed';
+
+    this.scrim = document.createElement('div');
+    Object.assign(this.scrim.style, {
+      position: 'fixed',
+      inset: '0',
+      background: 'rgba(0, 0, 0, 0.42)',
+      backdropFilter: 'blur(2px)',
+      opacity: '0',
+      visibility: 'hidden',
+      zIndex: '1000',
+      pointerEvents: 'none',
+    } satisfies Partial<CSSStyleDeclaration>);
+    (this.scrim.style as CSSStyleDeclaration & { webkitBackdropFilter?: string }).webkitBackdropFilter =
+      'blur(2px)';
+    document.body.appendChild(this.scrim);
+
+    if (this.dismissOnScrim) {
+      this.scrim.addEventListener('click', this.onDismiss);
+      document.addEventListener('keydown', this.onKey);
+    }
+  }
+
+  get isOpen(): boolean {
+    return this.open_;
+  }
+
+  present(): void {
+    if (this.open_) return;
+    this.open_ = true;
+    this.openedAt = performance.now();
+    this.sheet.dataset.lgSheet = 'open';
+    this.sheet.style.visibility = 'visible';
+    this.scrim.style.visibility = 'visible';
+    this.scrim.style.pointerEvents = 'auto';
+
+    this.scrimAnim?.cancel();
+    this.scrimAnim = this.scrim.animate([{ opacity: 0 }, { opacity: 1 }], {
+      duration: 300,
+      easing: 'ease',
+      fill: 'forwards',
+    });
+
+    this.anim?.cancel();
+    if (this.reduceMotion) {
+      this.sheet.style.transform = 'translateX(-50%)';
+      return;
+    }
+    this.anim = this.sheet.animate(
+      [
+        { transform: 'translateX(-50%) translateY(110%) scale(0.96)', opacity: 0.4 },
+        { transform: 'translateX(-50%) translateY(0) scale(1)', opacity: 1 },
+      ],
+      { duration: 540, easing: SPRING, fill: 'forwards' }
+    );
+  }
+
+  dismiss(): void {
+    if (!this.open_) return;
+    this.open_ = false;
+    this.sheet.dataset.lgSheet = 'closed';
+    this.scrim.style.pointerEvents = 'none';
+
+    this.scrimAnim?.cancel();
+    this.scrimAnim = this.scrim.animate([{ opacity: 1 }, { opacity: 0 }], {
+      duration: 260,
+      easing: OUT_EASE,
+      fill: 'forwards',
+    });
+    this.scrimAnim.onfinish = () => {
+      if (!this.open_) this.scrim.style.visibility = 'hidden';
+    };
+
+    this.anim?.cancel();
+    if (this.reduceMotion) {
+      this.sheet.style.visibility = 'hidden';
+      return;
+    }
+    this.anim = this.sheet.animate(
+      [
+        { transform: 'translateX(-50%) translateY(0) scale(1)', opacity: 1 },
+        { transform: 'translateX(-50%) translateY(110%) scale(0.96)', opacity: 0.4 },
+      ],
+      { duration: 300, easing: OUT_EASE, fill: 'forwards' }
+    );
+    this.anim.onfinish = () => {
+      if (!this.open_) this.sheet.style.visibility = 'hidden';
+    };
+  }
+
+  toggle(): void {
+    if (this.open_) this.dismiss();
+    else this.present();
+  }
+
+  destroy(): void {
+    this.scrim.removeEventListener('click', this.onDismiss);
+    document.removeEventListener('keydown', this.onKey);
+    this.anim?.cancel();
+    this.scrimAnim?.cancel();
+    this.scrim.remove();
+  }
+
+  private onDismiss = (): void => {
+    // Ignore the tail of the gesture that opened the sheet — otherwise the same
+    // click that presented it can immediately fall through to the scrim.
+    if (performance.now() - this.openedAt < 300) return;
+    this.dismiss();
+  };
+  private onKey = (e: KeyboardEvent): void => {
+    if (e.key === 'Escape') this.dismiss();
+  };
+}

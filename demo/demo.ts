@@ -1,4 +1,4 @@
-import { LiquidGlass, LiquidInteractive, LiquidMenu } from '../src';
+import { LiquidGlass, LiquidInteractive, LiquidMenu, LiquidSheet } from '../src';
 import type { LiquidGlassOptions, LiquidGlassVariant } from '../src';
 
 interface GlassConfig extends LiquidGlassOptions {}
@@ -93,6 +93,14 @@ const replay = (el: HTMLElement, cls: string): void => {
 };
 document.getElementById('anim-mat-in')?.addEventListener('click', () => chip && replay(chip, 'lg-materialize'));
 document.getElementById('anim-mat-out')?.addEventListener('click', () => chip && replay(chip, 'lg-dematerialize'));
+
+// Sheet — materializes up from the bottom over a dimming scrim.
+const sheetEl = document.getElementById('anim-sheet');
+if (sheetEl) {
+  const sheet = new LiquidSheet(sheetEl, { bottomGap: 28 });
+  document.getElementById('anim-sheet-trigger')?.addEventListener('click', () => sheet.present());
+  document.getElementById('anim-sheet-close')?.addEventListener('click', () => sheet.dismiss());
+}
 
 // Tab bar active toggle (purely visual)
 for (const tab of Array.from(document.querySelectorAll<HTMLButtonElement>('.tab'))) {
