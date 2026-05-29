@@ -79,8 +79,9 @@ export function generateSpecularMap(params: SpecularMapParams): string {
       const invT4 = invT * invT * invT * invT;
       h += bevelWidth * (1.0 - invT4);
       
-      // Smoothstep fade for the dome to perfectly zero out at the border, preventing corner cliffs/jaggies
-      edgeFade = t * t * (3.0 - 2.0 * t);
+      // Smootherstep (Ken Perlin) fade ensures C2 (curvature) continuity at t=1.0.
+      // This perfectly eliminates the Mach band "separation line" between the bevel and the interior dome.
+      edgeFade = t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
     } else {
       h += bevelWidth;
     }
