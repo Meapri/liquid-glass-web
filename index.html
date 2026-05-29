@@ -166,6 +166,49 @@
         </div>
       </section>
 
+      <!-- Animations showcase -->
+      <section id="animations" class="animations">
+        <h2>Animations</h2>
+        <p class="anim-sub">Apple designed the motion and the look as one. Interact to see each one.</p>
+
+        <div class="anim-grid">
+          <!-- Menu summon morph -->
+          <div class="anim-card">
+            <div class="anim-label">Menu morph — flows out of the control, thicker as it grows</div>
+            <button class="btn anim-menu-trigger liquid-glass lg-interactive" id="anim-menu-trigger" data-glass='{"radius":"pill","thickness":44,"refraction":50,"variant":"regular"}'>
+              Options ▾
+            </button>
+            <div class="anim-menu liquid-glass" id="anim-menu" data-glass='{"radius":24,"thickness":44,"refraction":56,"variant":"regular"}'>
+              <button class="anim-menu-item">Share</button>
+              <button class="anim-menu-item">Duplicate</button>
+              <button class="anim-menu-item">Rename</button>
+              <div class="anim-menu-sep"></div>
+              <button class="anim-menu-item anim-menu-danger">Delete</button>
+            </div>
+          </div>
+
+          <!-- Materialize in / out -->
+          <div class="anim-card">
+            <div class="anim-label">Materialize in / out — springs the lensing, not a fade</div>
+            <div class="anim-materialize-stage">
+              <div class="chip liquid-glass" id="anim-chip" data-glass='{"radius":18,"thickness":40,"refraction":48,"variant":"regular"}'>Liquid chip</div>
+            </div>
+            <div class="anim-btn-row">
+              <button class="btn btn-sm liquid-glass lg-interactive" id="anim-mat-in" data-glass='{"radius":"pill","thickness":40,"refraction":44}'>Materialize in</button>
+              <button class="btn btn-sm liquid-glass lg-interactive" id="anim-mat-out" data-glass='{"radius":"pill","thickness":40,"refraction":44}'>Out</button>
+            </div>
+          </div>
+
+          <!-- Interaction illumination -->
+          <div class="anim-card">
+            <div class="anim-label">Interaction illumination — press &amp; hold; light blooms from your finger</div>
+            <div class="press-target liquid-glass lg-interactive" id="anim-press" data-glass='{"radius":24,"thickness":44,"refraction":52,"variant":"regular"}'>
+              Press &amp; hold
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- Live controls -->
       <section id="playground" class="playground">
         <div class="playground-stage">

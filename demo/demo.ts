@@ -1,4 +1,4 @@
-import { LiquidGlass, LiquidInteractive } from '../src';
+import { LiquidGlass, LiquidInteractive, LiquidMenu } from '../src';
 import type { LiquidGlassOptions, LiquidGlassVariant } from '../src';
 
 interface GlassConfig extends LiquidGlassOptions {}
@@ -71,6 +71,28 @@ if (target) {
     });
   }
 }
+
+// === Animations showcase ===
+// Menu summon morph — the menu flows out of the trigger and reads thicker as it
+// grows (deeper shadow + more lensing scale with it).
+const menuTrigger = document.getElementById('anim-menu-trigger');
+const menuEl = document.getElementById('anim-menu');
+if (menuTrigger && menuEl) {
+  const menu = new LiquidMenu(menuTrigger, menuEl, { placement: 'bottom-start', offset: 10 });
+  for (const item of Array.from(menuEl.querySelectorAll<HTMLButtonElement>('.anim-menu-item'))) {
+    item.addEventListener('click', () => menu.close());
+  }
+}
+
+// Materialize in / out — restart the CSS animation by removing then re-adding.
+const chip = document.getElementById('anim-chip');
+const replay = (el: HTMLElement, cls: string): void => {
+  el.classList.remove('lg-materialize', 'lg-dematerialize');
+  void el.offsetWidth; // force reflow so the animation restarts
+  el.classList.add(cls);
+};
+document.getElementById('anim-mat-in')?.addEventListener('click', () => chip && replay(chip, 'lg-materialize'));
+document.getElementById('anim-mat-out')?.addEventListener('click', () => chip && replay(chip, 'lg-dematerialize'));
 
 // Tab bar active toggle (purely visual)
 for (const tab of Array.from(document.querySelectorAll<HTMLButtonElement>('.tab'))) {
