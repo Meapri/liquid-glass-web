@@ -184,6 +184,19 @@ export class FilterChain {
     this.feSaturate.setAttribute('result', 'saturated');
     this.filter.appendChild(this.feSaturate);
 
+    // Apple Liquid Glass brightness boost — glass catches and concentrates light
+    const feBrightness = document.createElementNS(SVG_NS, 'feComponentTransfer');
+    feBrightness.setAttribute('in', 'saturated');
+    feBrightness.setAttribute('result', 'brightened');
+    for (const ch of ['R', 'G', 'B'] as const) {
+      const fn = document.createElementNS(SVG_NS, `feFunc${ch}`);
+      fn.setAttribute('type', 'linear');
+      fn.setAttribute('slope', '1.1');   // brightness(110%)
+      fn.setAttribute('intercept', '0');
+      feBrightness.appendChild(fn);
+    }
+    this.filter.appendChild(feBrightness);
+
     // Apple Liquid Glass Texture: physical noise/grain
     const feTurbulence = document.createElementNS(SVG_NS, 'feTurbulence');
     feTurbulence.setAttribute('type', 'fractalNoise');
@@ -201,7 +214,7 @@ export class FilterChain {
     ]);
     this.filter.appendChild(feColorNoise);
 
-    const feBlendNoise = blend(SVG_NS, 'coloredNoise', 'saturated', 'screen', 'noisySaturated');
+    const feBlendNoise = blend(SVG_NS, 'coloredNoise', 'brightened', 'screen', 'noisySaturated');
     this.filter.appendChild(feBlendNoise);
 
     // 3. Optional baked specular rim — blended in screen mode.

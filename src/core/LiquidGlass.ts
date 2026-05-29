@@ -65,7 +65,7 @@ const VARIANT_BLUR: Record<LiquidGlassVariant, number> = {
 const EDGE_SHADOW_LIGHT =
   'inset 0 0 0 0.5px rgba(255, 255, 255, 0.4), ' + // Sharp hairline rim
   'inset 0 1px 1px rgba(255, 255, 255, 0.8), ' +   // Soft bright top glare
-  '0 8px 32px rgba(0, 0, 0, 0.08), ' +            // Extremely soft ambient float shadow
+  '0 8px 32px rgba(31, 38, 135, 0.15), ' +          // Apple cool blue-purple float shadow
   '0 1px 4px rgba(0, 0, 0, 0.04)';
 
 const EDGE_SHADOW_DARK =
