@@ -90,7 +90,12 @@ input[type='text'] {
   opacity: 0.5;
 }
 
-.bg-orbs { position: absolute; inset: 0; }
+.bg-orbs { 
+  position: absolute; 
+  inset: 0; 
+  /* Apply the iOS 26 Liquid Morphing filter so the orbs merge organically */
+  filter: url(#ios26-gooey);
+}
 .orb {
   position: absolute;
   display: block;

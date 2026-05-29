@@ -184,6 +184,26 @@ export class FilterChain {
     this.feSaturate.setAttribute('result', 'saturated');
     this.filter.appendChild(this.feSaturate);
 
+    // Apple Liquid Glass Texture: physical noise/grain
+    const feTurbulence = document.createElementNS(SVG_NS, 'feTurbulence');
+    feTurbulence.setAttribute('type', 'fractalNoise');
+    feTurbulence.setAttribute('baseFrequency', '1.6');
+    feTurbulence.setAttribute('numOctaves', '2');
+    feTurbulence.setAttribute('result', 'noise');
+    this.filter.appendChild(feTurbulence);
+
+    // Make noise monochrome and very transparent
+    const feColorNoise = matrix(SVG_NS, 'noise', 'coloredNoise', [
+      1, 0, 0, 0, 0,
+      1, 0, 0, 0, 0,
+      1, 0, 0, 0, 0,
+      0, 0, 0, 0.05, 0,
+    ]);
+    this.filter.appendChild(feColorNoise);
+
+    const feBlendNoise = blend(SVG_NS, 'coloredNoise', 'saturated', 'screen', 'noisySaturated');
+    this.filter.appendChild(feBlendNoise);
+
     // 3. Optional baked specular rim — blended in screen mode.
     if (initial.specularMapUrl) {
       this.feImageSpec = document.createElementNS(SVG_NS, 'feImage');
@@ -196,7 +216,7 @@ export class FilterChain {
       this.feImageSpec.setAttribute('result', 'specMap');
       this.filter.appendChild(this.feImageSpec);
 
-      const blendSpec = blend(SVG_NS, 'saturated', 'specMap', 'screen', 'final');
+      const blendSpec = blend(SVG_NS, 'noisySaturated', 'specMap', 'screen', 'final');
       this.filter.appendChild(blendSpec);
     } else {
       this.feImageSpec = null;

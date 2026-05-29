@@ -1,4 +1,4 @@
-import { LiquidGlass } from '../src';
+import { LiquidGlass, LiquidInteractive } from '../src';
 import type { LiquidGlassOptions, LiquidGlassVariant } from '../src';
 
 interface GlassConfig extends LiquidGlassOptions {}
@@ -16,6 +16,11 @@ for (const el of Array.from(document.querySelectorAll<HTMLElement>('[data-glass]
   // The .liquid-glass class sets a default radius so 'auto' picks it up; we let
   // explicit radius win.
   instances.set(el, new LiquidGlass(el, config));
+}
+
+// Auto-apply LiquidInteractive to every element with .lg-interactive
+for (const el of Array.from(document.querySelectorAll<HTMLElement>('.lg-interactive'))) {
+  new LiquidInteractive(el);
 }
 
 // === Live playground ===

@@ -29,6 +29,7 @@ is composited by the browser GPU pipeline.
   glass its dimensional edge), a brighter top lip, a faint bottom lip and a soft
   cool float shadow — so a bare element reads as Liquid Glass with no extra CSS.
   A clean 1px rim like Apple's Control Center, not a glossy bevel.
+- **Spatial UI & iOS 26 Animations** — Bundled `.lg-interactive` classes that automatically provide physics-based 3D Parallax Tilt, Dynamic Spotlight Glare that tracks the pointer over the 1px edge, and organic "Jelly Squish" morphing on click (`scale3d(1.03, 0.92, 1)`).
 - **Shared `MapCache`** keyed by `(w, h, radius, thickness, dpr)` — same-sized
   elements reuse the same data URLs.
 
@@ -40,8 +41,9 @@ npm run dev   # demo at http://localhost:5173
 ```
 
 ```ts
-import { LiquidGlass } from './src';
+import { LiquidGlass, LiquidInteractive } from './src';
 
+// Initialize core refraction engine
 new LiquidGlass(document.querySelector('.tab-bar')!, {
   radius: 'pill',
   refraction: 18,
@@ -49,6 +51,9 @@ new LiquidGlass(document.querySelector('.tab-bar')!, {
   blur: 4,
   variant: 'regular',
 });
+
+// Auto-bind 3D Spatial Interactions (Parallax, Edge Glare, Jelly Squish)
+LiquidInteractive.initAll();
 ```
 
 ## Options

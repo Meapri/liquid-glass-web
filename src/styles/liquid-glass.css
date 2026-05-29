@@ -33,3 +33,119 @@
     0 1px 1px rgba(0, 0, 0, 0.28),
     0 18px 48px rgba(0, 0, 0, 0.5);
 }
+
+/* ==========================================================================
+   Liquid Glass Animations & Interactions
+   ========================================================================== */
+
+/* 
+ * Apply this class to make the glass interactive.
+ * Simulates heavy, physical glass lifting on hover and sinking on press.
+ * Automatically receives 3D tilt and glare via Interactive.ts
+ */
+.lg-interactive {
+  /* Use a bouncy, tension-filled cubic-bezier for iOS-like springs */
+  transition: transform 400ms cubic-bezier(0.34, 1.56, 0.64, 1), 
+              box-shadow 400ms cubic-bezier(0.34, 1.56, 0.64, 1),
+              filter 400ms ease;
+  cursor: pointer;
+  
+  /* Will be controlled by JS. Defaults for resting state: */
+  --lg-pointer-x: 0.5;
+  --lg-pointer-y: 0.5;
+  --lg-tilt-x: 0deg;
+  --lg-tilt-y: 0deg;
+  
+  /* Apply perspective and tilt */
+  transform: perspective(1200px) rotateX(var(--lg-tilt-x)) rotateY(var(--lg-tilt-y));
+  transform-style: preserve-3d;
+}
+
+/* Hover: Lift the glass closer to the user */
+.lg-interactive:hover {
+  transform: perspective(1200px) rotateX(var(--lg-tilt-x)) rotateY(var(--lg-tilt-y)) translateY(-2px) scale3d(1.02, 1.02, 1.02);
+  z-index: 10;
+}
+
+/* Active (Press): iOS 26 Fluid Jelly Squish */
+.lg-interactive:active {
+  /* Expand width, compress height to feel like a liquid drop being pressed */
+  transform: perspective(1200px) rotateX(calc(var(--lg-tilt-x) * 0.5)) rotateY(calc(var(--lg-tilt-y) * 0.5)) translateY(2px) scale3d(1.03, 0.92, 1);
+  transition: transform 300ms cubic-bezier(0.4, 0.0, 0.2, 1.4),
+              box-shadow 300ms cubic-bezier(0.4, 0.0, 0.2, 1.4);
+}
+
+/* 
+ * Spatial Surface Sheen
+ * A very soft, wide illumination on the glass surface.
+ */
+.lg-interactive::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 400ms ease;
+  background: radial-gradient(
+    800px circle at calc(var(--lg-pointer-x) * 100%) calc(var(--lg-pointer-y) * 100%),
+    rgba(255, 255, 255, 0.06),
+    transparent 40%
+  );
+  z-index: 10;
+}
+
+/* 
+ * Spatial Glowing Edge (Liquid Glass Standard)
+ * Illuminates a 1px border dynamically based on mouse position.
+ * Fixed with foolproof padding-box / border-box mask for cross-browser compatibility.
+ */
+.lg-interactive::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 400ms ease;
+  
+  /* Render a 1px transparent border, but paint the gradient into it */
+  border: 1px solid transparent;
+  background: radial-gradient(
+    300px circle at calc(var(--lg-pointer-x) * 100%) calc(var(--lg-pointer-y) * 100%),
+    rgba(255, 255, 255, 0.6),
+    transparent 40%
+  ) border-box; /* Must be border-box so it extends into the border */
+  
+  /* Mask out the inside so ONLY the border remains visible */
+  -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0) border-box;
+  -webkit-mask-composite: destination-out;
+  mask-composite: exclude;
+  
+  z-index: 10;
+}
+
+.lg-interactive:hover::before,
+.lg-interactive:hover::after {
+  opacity: 1;
+}
+
+/* 
+ * Entrance animation for newly mounted glass elements
+ */
+.lg-entrance {
+  animation: lg-spring-in 800ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  opacity: 0;
+  transform: translateY(20px) scale(0.95);
+}
+
+@keyframes lg-spring-in {
+  0% {
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}

@@ -4,9 +4,7 @@
  * The result is a transparent canvas with:
  *   - a bright 1.5 px hairline along the inside of the rounded-rect border,
  *     ramping from full-white in the top-left quadrant to fully transparent
- *     in the bottom-right (a fixed UI light from upper-left, like macOS),
- *   - a soft white hotspot centred near the top-left interior to mimic the
- *     broad reflection of an ambient ceiling source.
+ *     in the bottom-right (a fixed UI light from upper-left, like macOS).
  *
  * No motion. No rAF. Cheap to generate, cheap to composite — the SVG filter
  * blends this onto the refracted backdrop in a single GPU pass.
@@ -22,11 +20,11 @@ export interface SpecularMapParams {
 }
 
 export function generateSpecularMap(params: SpecularMapParams): string {
-  const dpr = Math.max(1, Math.min(3, params.pixelRatio));
+  const dpr = params.pixelRatio;
   const w = Math.max(2, Math.round(params.width * dpr));
   const h = Math.max(2, Math.round(params.height * dpr));
   const r = Math.max(0, Math.min(Math.min(w, h) / 2, params.radius * dpr));
-  const intensity = Math.max(0, Math.min(1.5, params.intensity));
+  const intensity = Math.max(0, params.intensity);
 
   const canvas =
     typeof OffscreenCanvas !== 'undefined'
@@ -36,96 +34,151 @@ export function generateSpecularMap(params: SpecularMapParams): string {
     canvas.width = w;
     canvas.height = h;
   }
-  const ctx = (canvas as HTMLCanvasElement | OffscreenCanvas).getContext('2d', {
-    alpha: true,
-  }) as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+  const ctx = (canvas as HTMLCanvasElement | OffscreenCanvas).getContext('2d') as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 
-  ctx.clearRect(0, 0, w, h);
+  const imgData = ctx.createImageData(w, h);
+  const data = imgData.data;
 
-  // 1. Bright hairline along the inside of the rim. A doubled stroke (wider
-  //    soft halo + narrower hard core) gives the rim depth without aliasing.
-  const stroke = Math.max(1, dpr * 1.5);
-  const haloWidth = stroke * 3.2;
+  // Geometry parameters must match DisplacementMap.ts EXACTLY
+  const halfW = w / 2;
+  const halfH = h / 2;
+  const cx = halfW;
+  const cy = halfH;
+  
+  const maxDepth = Math.min(halfW, halfH);
+  const bevelWidth = Math.min(maxDepth, Math.max(2, params.thickness * dpr));
 
-  // Soft halo first
-  ctx.lineWidth = haloWidth;
-  ctx.strokeStyle = `rgba(255, 255, 255, ${0.32 * intensity})`;
-  roundRectPath(ctx, 0.5, 0.5, w - 1, h - 1, r - 0.5);
-  ctx.stroke();
+  function getInside(x: number, y: number): number {
+    const adx = Math.abs(x - cx);
+    const ady = Math.abs(y - cy);
+    const inX = halfW - r;
+    const inY = halfH - r;
+    if (adx > inX && ady > inY) {
+      const dx = adx - inX;
+      const dy = ady - inY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      return r - dist;
+    }
+    return Math.min(halfW - adx, halfH - ady);
+  }
 
-  // Hard rim core
-  ctx.lineWidth = stroke;
-  ctx.strokeStyle = `rgba(255, 255, 255, ${0.95 * intensity})`;
-  roundRectPath(ctx, 0.5, 0.5, w - 1, h - 1, r - 0.5);
-  ctx.stroke();
+  // Ultra-optimized Hybrid Height Field Function
+  // Blends Custom Cubic Spline Bevel with Quadratic Global Dome
+  function getH(inside: number): number {
+    if (inside <= 0) return 0;
+    
+    let h = 0;
+    // 1. Custom Cubic Spline Bevel (C2 Continuous: y = 1 - (1-t)^3)
+    if (inside < bevelWidth) {
+      const invT = 1.0 - (inside / bevelWidth);
+      h += bevelWidth * (1.0 - invT * invT * invT);
+    } else {
+      h += bevelWidth;
+    }
+    
+    // 2. Custom Quadratic Global Dome (y = 2t - t^2)
+    const tGlobal = inside < maxDepth ? (inside / maxDepth) : 1.0;
+    h += maxDepth * 0.2 * (2.0 * tGlobal - tGlobal * tGlobal);
+    
+    return h;
+  }
 
-  // 2. Lighting mask — the curved edge catches light all the way round (this rim
-  //    IS the edge dimensionality, optically, instead of a drawn outline), with a
-  //    directional bias: brightest where it meets the light at top-left, but
-  //    staying clearly present along the bottom/right so the whole edge reads.
-  ctx.globalCompositeOperation = 'destination-in';
-  const litGrad = ctx.createLinearGradient(0, 0, w, h);
-  litGrad.addColorStop(0.0, 'rgba(0, 0, 0, 1.0)');  // brightest at the lit (top-left) edge
-  litGrad.addColorStop(0.5, 'rgba(0, 0, 0, 0.66)');
-  litGrad.addColorStop(1.0, 'rgba(0, 0, 0, 0.52)'); // rim stays present round the far edge
-  ctx.fillStyle = litGrad;
-  ctx.fillRect(0, 0, w, h);
+  const lightDirX = -0.7071; // Top-Left
+  const lightDirY = -0.7071;
 
-  // 3. Soft hotspot — a restrained diffuse highlight near the top-left interior,
-  //    the gentle sheen of an overhead light on the glass. Kept subtle so flat
-  //    tiles read as refined frost (not a glossy bead) — Apple's Control Center
-  //    material is understated, carried by the frost + rim, not a wet gloss.
-  ctx.globalCompositeOperation = 'lighter';
-  const hotX = w * 0.3;
-  const hotY = h * 0.26;
-  const hotR = Math.max(w, h) * 0.5;
-  const hot = ctx.createRadialGradient(hotX, hotY, 0, hotX, hotY, hotR);
-  hot.addColorStop(0, `rgba(255, 255, 255, ${0.14 * intensity})`);
-  hot.addColorStop(0.55, `rgba(255, 255, 255, ${0.04 * intensity})`);
-  hot.addColorStop(1, 'rgba(255, 255, 255, 0)');
-  ctx.fillStyle = hot;
-  // Clip the hotspot to the rounded shape so it doesn't bleed past corners.
-  ctx.save();
-  roundRectPath(ctx, 0, 0, w, h, r);
-  ctx.clip();
-  ctx.fillRect(0, 0, w, h);
-  ctx.restore();
+  for (let y = 0; y < h; y++) {
+    const isYMiddle = y > bevelWidth && y < h - bevelWidth;
+    const py = y + 0.5;
+    
+    // Sliding Window: initial right point
+    let prevHx = getH(getInside(0.5, py));
 
-  ctx.globalCompositeOperation = 'source-over';
+    for (let x = 0; x < w; x++) {
+      // 3. Bounding Box Optimization: Skip the entire massive flat interior
+      if (isYMiddle && x > bevelWidth && x < w - bevelWidth) {
+        x = Math.max(x, Math.floor(w - bevelWidth - 1));
+        prevHx = getH(getInside(x + 1.5, py)); // Sync window
+        continue;
+      }
+
+      const px = x + 0.5;
+      const idx = (y * w + x) * 4;
+      const inside0 = getInside(px, py);
+      
+      if (inside0 <= 0) {
+        // imgData is zero-filled by default, no need to write alpha=0
+        prevHx = getH(getInside(px + 1.5, py));
+        continue;
+      }
+
+      let totalSpec = 0;
+
+      // strictly constrain light to the border edge (bevel). NO internal light processing.
+      if (inside0 <= bevelWidth) {
+        // 1. Sliding Window Optimization
+        const h0 = prevHx;
+        const hx = getH(getInside(px + 1.5, py));
+        const hy = getH(getInside(px, py + 1.5));
+        prevHx = hx;
+
+        const dHdx = hx - h0;
+        const dHdy = hy - h0;
+
+        const nLen = Math.sqrt(dHdx * dHdx + dHdy * dHdy + 1.0);
+        const Nx = -dHdx / nLen;
+        const Ny = -dHdy / nLen;
+        const Nz = 1.0 / nLen;
+
+        // "Our Unique Formula": Blending physical 3D properties with vector precision
+        // 1. Fresnel: Peaks at the extreme outer edge (Nz=0), drops to zero at inner boundary (Nz=1)
+        const fresnel = Math.max(0, 1.0 - Nz); 
+        
+        // 2. Dual-Layered Vector Precision: A razor-sharp core + soft halo
+        const core = Math.pow(fresnel, 12.0) * 1.5; // Razor thin inner bright line
+        const halo = Math.pow(fresnel, 3.0) * 0.35; // Soft 3D curvature glow
+        
+        // 3. Directional Flow: Wraps beautifully around the top-left curve
+        const dirLen = Math.sqrt(Nx*Nx + Ny*Ny) || 1.0;
+        const nxDir = Nx / dirLen;
+        const nyDir = Ny / dirLen;
+        
+        // Main light from Top-Left
+        const dotDir = Math.max(0, nxDir * lightDirX + nyDir * lightDirY);
+        const rimHighlight = (core + halo) * Math.pow(dotDir, 1.5) * 1.8;
+
+        // Subtle Bottom-Right bounce for completeness
+        const bounceDot = Math.max(0, nxDir * -lightDirX + nyDir * -lightDirY);
+        const bounceHighlight = Math.pow(fresnel, 4.0) * Math.pow(bounceDot, 2.0) * 0.2;
+
+        totalSpec = (rimHighlight + bounceHighlight) * intensity;
+      }
+
+      if (totalSpec > 0) {
+        totalSpec = Math.max(0, Math.min(1.0, totalSpec));
+        const alpha = Math.round(totalSpec * 255);
+        data[idx] = 255;
+        data[idx+1] = 255;
+        data[idx+2] = 255;
+        data[idx+3] = alpha;
+      } else {
+        prevHx = getH(getInside(px + 1.5, py));
+      }
+    }
+  }
+
+  ctx.putImageData(imgData, 0, 0);
 
   if (canvas instanceof HTMLCanvasElement) {
-    return canvas.toDataURL('image/png');
+    return canvas.toDataURL('image/webp', 1.0);
   }
   return offscreenToDataURL(canvas as OffscreenCanvas);
-}
-
-function roundRectPath(
-  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  r: number
-): void {
-  const radius = Math.max(0, Math.min(r, Math.min(w, h) / 2));
-  ctx.beginPath();
-  ctx.moveTo(x + radius, y);
-  ctx.lineTo(x + w - radius, y);
-  ctx.arcTo(x + w, y, x + w, y + radius, radius);
-  ctx.lineTo(x + w, y + h - radius);
-  ctx.arcTo(x + w, y + h, x + w - radius, y + h, radius);
-  ctx.lineTo(x + radius, y + h);
-  ctx.arcTo(x, y + h, x, y + h - radius, radius);
-  ctx.lineTo(x, y + radius);
-  ctx.arcTo(x, y, x + radius, y, radius);
-  ctx.closePath();
 }
 
 function offscreenToDataURL(canvas: OffscreenCanvas): string {
   const tmp = document.createElement('canvas');
   tmp.width = canvas.width;
   tmp.height = canvas.height;
-  const tctx = tmp.getContext('2d')!;
+  const tctx = tmp.getContext('2d', { willReadFrequently: true })!;
   tctx.drawImage(canvas as unknown as CanvasImageSource, 0, 0);
-  return tmp.toDataURL('image/png');
+  return tmp.toDataURL('image/webp', 1.0);
 }

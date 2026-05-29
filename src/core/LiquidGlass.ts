@@ -25,18 +25,18 @@ import type { LiquidGlassOptions, ResolvedOptions, LiquidGlassQuality, LiquidGla
 import { FilterChain } from './FilterChain';
 import { getDisplacementMap, getSpecularMap } from './MapCache';
 
-const VARIANT_TINT: Record<string, { light: string; dark: string }> = {
+const VARIANT_TINT: Record<LiquidGlassVariant, { light: string; dark: string }> = {
   regular: {
-    light: 'rgba(255, 255, 255, 0.08)',
-    dark: 'rgba(40, 38, 50, 0.15)',
+    light: 'rgba(255, 255, 255, 0.15)', // Highly transparent pure white
+    dark: 'rgba(0, 0, 0, 0.15)',        // Highly transparent pure black (no grey wash)
   },
   clear: {
-    light: 'rgba(255, 255, 255, 0.02)',
-    dark: 'rgba(18, 18, 22, 0.06)',
+    light: 'rgba(255, 255, 255, 0.05)',
+    dark: 'rgba(0, 0, 0, 0.05)',
   },
   tinted: {
-    light: 'rgba(255, 255, 255, 0.22)',
-    dark: 'rgba(40, 40, 48, 0.42)',
+    light: 'rgba(255, 255, 255, 0.5)',
+    dark: 'rgba(40, 40, 48, 0.5)',
   },
 };
 
@@ -51,7 +51,7 @@ const VARIANT_TINT: Record<string, { light: string; dark: string }> = {
 const VARIANT_BLUR: Record<LiquidGlassVariant, number> = {
   regular: 4,
   clear: 2,
-  tinted: 6,
+  tinted: 8,
 };
 
 /**
@@ -63,28 +63,28 @@ const VARIANT_BLUR: Record<LiquidGlassVariant, number> = {
  * cool float shadow that lifts it off the page. Cool-tinted shadow like Apple's.
  */
 const EDGE_SHADOW_LIGHT =
-  'inset 0 0 0 0.5px rgba(255,255,255,0.18),' +
-  'inset 0 1px 1px rgba(255,255,255,0.22),' +
-  '0 1px 2px rgba(20,24,40,0.06),' +
-  '0 12px 30px rgba(20,24,40,0.16)';
+  'inset 0 0 0 0.5px rgba(255,255,255,0.2), ' +
+  'inset 0 1px 0 rgba(255,255,255,0.4), ' +
+  '0 12px 32px rgba(0, 0, 0, 0.15), ' +
+  '0 2px 8px rgba(0, 0, 0, 0.05)';
 
 const EDGE_SHADOW_DARK =
-  'inset 0 0 0 0.5px rgba(255,255,255,0.10),' +
-  'inset 0 1px 1px rgba(255,255,255,0.12),' +
-  '0 1px 2px rgba(0,0,0,0.28),' +
-  '0 14px 34px rgba(0,0,0,0.46)';
+  'inset 0 0 0 0.5px rgba(255,255,255,0.1), ' +
+  'inset 0 1px 0 rgba(255,255,255,0.2), ' +
+  '0 12px 32px rgba(0, 0, 0, 0.5), ' +            
+  '0 2px 8px rgba(0, 0, 0, 0.2)';
 
 const DEFAULT_OPTIONS: ResolvedOptions = {
   radius: 24,
-  thickness: 58,
-  refraction: 95,
-  chromaticAberration: 0.22,
-  blur: 12,
-  saturation: 145,
+  thickness: 48,
+  refraction: 64, // Doubled for a much stronger popping out feel
+  chromaticAberration: 0.03,
+  blur: 4,
+  saturation: 160,
   variant: 'regular',
   scheme: 'auto',
   tint: null,
-  specular: true,
+  specular: true, // Restored the well-calculated Canvas 2D specular light
   specularIntensity: 1.0,
   edges: true,
   applyRadius: true,
@@ -349,20 +349,15 @@ export class LiquidGlass {
    * ceiling), so capable machines keep the full-resolution lens.
    */
   private displacementDpr(): number {
-    const cap = this.quality === 'high' ? 3 : 1;
-    return Math.min(this.options.mapPixelRatio, cap);
+    return this.options.mapPixelRatio * 0.6;
   }
 
   /**
-   * The specular PNG is the most expensive map to build — its canvas is drawn
-   * with GPU gradient/stroke ops and toDataURL forces a GPU→CPU readback + PNG
-   * encode that dominates fresh-instance setup. Below 'high' it renders at 1×
-   * (feImage upscales it); the rim stays a soft hairline, which is what Liquid
-   * Glass wants anyway. 'high' keeps full resolution for a razor rim.
+   * The specular PNG is the most expensive map to build, but users requested it 
+   * to stay at full resolution (1.0) so the edge lighting remains razor sharp.
    */
   private specularDpr(): number {
-    const cap = this.quality === 'high' ? 3 : 1;
-    return Math.min(this.options.mapPixelRatio, cap);
+    return this.options.mapPixelRatio;
   }
 
   private installFilter(): void {
@@ -375,16 +370,6 @@ export class LiquidGlass {
       pixelRatio: this.displacementDpr(),
       refraction: this.options.refraction,
     });
-    const specUrl = this.options.specular
-      ? getSpecularMap({
-          width: this.currentWidth,
-          height: this.currentHeight,
-          radius: this.computedRadius(),
-          thickness: this.computedThickness(),
-          pixelRatio: this.specularDpr(),
-          intensity: this.options.specularIntensity,
-        })
-      : null;
 
     this.filter = new FilterChain({
       refraction: this.effectiveRefraction(),
@@ -395,7 +380,14 @@ export class LiquidGlass {
       height: this.currentHeight,
       displacementMapUrl: disp.url,
       displacementPadding: disp.padding,
-      specularMapUrl: specUrl,
+      specularMapUrl: this.options.specular ? getSpecularMap({
+        width: this.currentWidth,
+        height: this.currentHeight,
+        radius: this.computedRadius(),
+        thickness: this.computedThickness(),
+        pixelRatio: this.specularDpr(),
+        intensity: this.options.specularIntensity,
+      }) : null,
       root: this.root,
     });
 
