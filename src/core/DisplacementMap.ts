@@ -24,7 +24,7 @@ export interface DisplacementMapResult {
 export function generateDisplacementMap(
   params: DisplacementMapParams
 ): DisplacementMapResult {
-  const dpr = 0.4; 
+  const dpr = 0.6; 
   const w = Math.max(1, Math.round(params.width * dpr));
   const h = Math.max(1, Math.round(params.height * dpr));
   const r = Math.max(0, Math.min(Math.min(w, h) / 2, params.radius * dpr));
@@ -63,7 +63,13 @@ export function generateDisplacementMap(
   const maxDepth = Math.min(halfW, halfH);
   const bevelWidth = Math.min(maxDepth, Math.max(2, params.thickness * dpr));
 
-  // SDF inside distance
+  // Smooth Minimum function (Polynomial smin) to remove "X" diagonal ridges
+  function smin(a: number, b: number, k: number): number {
+    const h = Math.max(k - Math.abs(a - b), 0.0) / k;
+    return Math.min(a, b) - h * h * k * 0.25;
+  }
+
+  // SDF inside distance with Smooth Minimum
   function getInside(x: number, y: number): number {
     const adx = Math.abs(x - cx);
     const ady = Math.abs(y - cy);
@@ -74,14 +80,19 @@ export function generateDisplacementMap(
       const dist = Math.sqrt(qx * qx + qy * qy);
       return r - dist;
     }
-    return Math.min(halfW - adx, halfH - ady);
+    
+    const a = halfW - adx;
+    const b = halfH - ady;
+    // Smoothing radius proportional to maxDepth to ensure large boxes round off properly
+    const k = maxDepth * 0.5;
+    return smin(a, b, k);
   }
 
-  // Global Magnification Constants (Pre-calculated Loop Invariants)
-  const globalStrength = maxDepth * 0.2; // Adjusted for quadratic curve
+  // Global Magnification Constants
+  const globalStrength = maxDepth * 0.5; // Increased from 0.2 to 0.5 for deeper interior refraction
 
   // Ultra-optimized Hybrid Height Field Function
-  // Blends Custom Cubic Spline Bevel with Quadratic Global Dome
+  // Blends Custom Cubic Spline Bevel with Sine Wave Global Dome
   function getH(inside: number): number {
     if (inside <= 0) return 0;
     
@@ -94,9 +105,9 @@ export function generateDisplacementMap(
       h += bevelWidth;
     }
     
-    // 2. Custom Quadratic Global Dome (y = 2t - t^2)
+    // 2. Custom Sine Global Dome for optimal central lens refraction
     const tGlobal = inside < maxDepth ? (inside / maxDepth) : 1.0;
-    h += globalStrength * (2.0 * tGlobal - tGlobal * tGlobal);
+    h += globalStrength * Math.sin(tGlobal * Math.PI * 0.5);
     
     return h;
   }

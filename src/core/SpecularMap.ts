@@ -48,6 +48,11 @@ export function generateSpecularMap(params: SpecularMapParams): string {
   const maxDepth = Math.min(halfW, halfH);
   const bevelWidth = Math.min(maxDepth, Math.max(2, params.thickness * dpr));
 
+  function smin(a: number, b: number, k: number): number {
+    const h_factor = Math.max(k - Math.abs(a - b), 0.0) / k;
+    return Math.min(a, b) - h_factor * h_factor * k * 0.25;
+  }
+
   function getInside(x: number, y: number): number {
     const adx = Math.abs(x - cx);
     const ady = Math.abs(y - cy);
@@ -59,11 +64,17 @@ export function generateSpecularMap(params: SpecularMapParams): string {
       const dist = Math.sqrt(dx * dx + dy * dy);
       return r - dist;
     }
-    return Math.min(halfW - adx, halfH - ady);
+    
+    const a = halfW - adx;
+    const b = halfH - ady;
+    const k = maxDepth * 0.5;
+    return smin(a, b, k);
   }
 
+  const globalStrength = maxDepth * 0.5;
+
   // Ultra-optimized Hybrid Height Field Function
-  // Blends Custom Cubic Spline Bevel with Quadratic Global Dome
+  // Blends Custom Cubic Spline Bevel with Sine Wave Global Dome
   function getH(inside: number): number {
     if (inside <= 0) return 0;
     
@@ -76,9 +87,9 @@ export function generateSpecularMap(params: SpecularMapParams): string {
       h += bevelWidth;
     }
     
-    // 2. Custom Quadratic Global Dome (y = 2t - t^2)
+    // 2. Custom Sine Global Dome for optimal central lens refraction
     const tGlobal = inside < maxDepth ? (inside / maxDepth) : 1.0;
-    h += maxDepth * 0.2 * (2.0 * tGlobal - tGlobal * tGlobal);
+    h += globalStrength * Math.sin(tGlobal * Math.PI * 0.5);
     
     return h;
   }

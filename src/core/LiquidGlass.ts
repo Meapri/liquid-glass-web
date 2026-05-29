@@ -349,7 +349,7 @@ export class LiquidGlass {
    * ceiling), so capable machines keep the full-resolution lens.
    */
   private displacementDpr(): number {
-    return this.options.mapPixelRatio * 0.4;
+    return this.options.mapPixelRatio * 0.6;
   }
 
   /**
