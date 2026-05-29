@@ -24,7 +24,7 @@ export interface DisplacementMapResult {
 export function generateDisplacementMap(
   params: DisplacementMapParams
 ): DisplacementMapResult {
-  const dpr = 0.6; 
+  const dpr = 0.4; 
   const w = Math.max(1, Math.round(params.width * dpr));
   const h = Math.max(1, Math.round(params.height * dpr));
   const r = Math.max(0, Math.min(Math.min(w, h) / 2, params.radius * dpr));
