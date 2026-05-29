@@ -48,11 +48,6 @@ export function generateSpecularMap(params: SpecularMapParams): string {
   const maxDepth = Math.min(halfW, halfH);
   const bevelWidth = Math.min(maxDepth, Math.max(2, params.thickness * dpr));
 
-  function smin(a: number, b: number, k: number): number {
-    const h_factor = Math.max(k - Math.abs(a - b), 0.0) / k;
-    return Math.min(a, b) - h_factor * h_factor * k * 0.25;
-  }
-
   function getInside(x: number, y: number): number {
     const adx = Math.abs(x - cx);
     const ady = Math.abs(y - cy);
@@ -64,32 +59,32 @@ export function generateSpecularMap(params: SpecularMapParams): string {
       const dist = Math.sqrt(dx * dx + dy * dy);
       return r - dist;
     }
-    
-    const a = halfW - adx;
-    const b = halfH - ady;
-    const k = maxDepth * 0.5;
-    return smin(a, b, k);
+    return Math.min(halfW - adx, halfH - ady);
   }
 
-  const globalStrength = maxDepth * 0.5;
+  const globalStrength = maxDepth * 0.65;
 
-  // Ultra-optimized Hybrid Height Field Function
-  // Blends Custom Cubic Spline Bevel with Sine Wave Global Dome
-  function getH(inside: number): number {
+  // Hybrid Height Field: Official Apple Quartic Root Bevel + Hacky Bivariate Paraboloid Dome
+  function getH(px: number, py: number, inside: number): number {
     if (inside <= 0) return 0;
     
     let h = 0;
-    // 1. Custom Cubic Spline Bevel (C2 Continuous: y = 1 - (1-t)^3)
+    // 1. Anti-aliased Apple Bevel (Quartic Polynomial: y = 1 - (1 - t)⁴)
+    // Finite slope at the edge completely removes jaggies while keeping the steep refraction
     if (inside < bevelWidth) {
       const invT = 1.0 - (inside / bevelWidth);
-      h += bevelWidth * (1.0 - invT * invT * invT);
+      const invT4 = invT * invT * invT * invT;
+      h += bevelWidth * (1.0 - invT4);
     } else {
       h += bevelWidth;
     }
     
-    // 2. Custom Sine Global Dome for optimal central lens refraction
-    const tGlobal = inside < maxDepth ? (inside / maxDepth) : 1.0;
-    h += globalStrength * Math.sin(tGlobal * Math.PI * 0.5);
+    // 2. Hacky Bivariate Paraboloid Dome (Completely removes "X" artifact, soft center refraction)
+    const u = (px - cx) / halfW;
+    const v = (py - cy) / halfH;
+    const dome = (1.0 - u * u) * (1.0 - v * v);
+    
+    h += globalStrength * dome;
     
     return h;
   }
@@ -102,13 +97,13 @@ export function generateSpecularMap(params: SpecularMapParams): string {
     const py = y + 0.5;
     
     // Sliding Window: initial right point
-    let prevHx = getH(getInside(0.5, py));
+    let prevHx = getH(0.5, py, getInside(0.5, py));
 
     for (let x = 0; x < w; x++) {
       // 3. Bounding Box Optimization: Skip the entire massive flat interior
       if (isYMiddle && x > bevelWidth && x < w - bevelWidth) {
         x = Math.max(x, Math.floor(w - bevelWidth - 1));
-        prevHx = getH(getInside(x + 1.5, py)); // Sync window
+        prevHx = getH(x + 1.5, py, getInside(x + 1.5, py)); // Sync window
         continue;
       }
 
@@ -118,7 +113,7 @@ export function generateSpecularMap(params: SpecularMapParams): string {
       
       if (inside0 <= 0) {
         // imgData is zero-filled by default, no need to write alpha=0
-        prevHx = getH(getInside(px + 1.5, py));
+        prevHx = getH(px + 1.5, py, getInside(px + 1.5, py));
         continue;
       }
 
@@ -128,8 +123,8 @@ export function generateSpecularMap(params: SpecularMapParams): string {
       if (inside0 <= bevelWidth) {
         // 1. Sliding Window Optimization
         const h0 = prevHx;
-        const hx = getH(getInside(px + 1.5, py));
-        const hy = getH(getInside(px, py + 1.5));
+        const hx = getH(px + 1.5, py, getInside(px + 1.5, py));
+        const hy = getH(px, py + 1.5, getInside(px, py + 1.5));
         prevHx = hx;
 
         const dHdx = hx - h0;

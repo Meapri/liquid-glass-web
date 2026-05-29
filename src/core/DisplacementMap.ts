@@ -24,7 +24,7 @@ export interface DisplacementMapResult {
 export function generateDisplacementMap(
   params: DisplacementMapParams
 ): DisplacementMapResult {
-  const dpr = 0.6; 
+  const dpr = params.pixelRatio;
   const w = Math.max(1, Math.round(params.width * dpr));
   const h = Math.max(1, Math.round(params.height * dpr));
   const r = Math.max(0, Math.min(Math.min(w, h) / 2, params.radius * dpr));
@@ -63,13 +63,7 @@ export function generateDisplacementMap(
   const maxDepth = Math.min(halfW, halfH);
   const bevelWidth = Math.min(maxDepth, Math.max(2, params.thickness * dpr));
 
-  // Smooth Minimum function (Polynomial smin) to remove "X" diagonal ridges
-  function smin(a: number, b: number, k: number): number {
-    const h = Math.max(k - Math.abs(a - b), 0.0) / k;
-    return Math.min(a, b) - h * h * k * 0.25;
-  }
-
-  // SDF inside distance with Smooth Minimum
+  // Exact SDF inside distance
   function getInside(x: number, y: number): number {
     const adx = Math.abs(x - cx);
     const ady = Math.abs(y - cy);
@@ -81,33 +75,33 @@ export function generateDisplacementMap(
       return r - dist;
     }
     
-    const a = halfW - adx;
-    const b = halfH - ady;
-    // Smoothing radius proportional to maxDepth to ensure large boxes round off properly
-    const k = maxDepth * 0.5;
-    return smin(a, b, k);
+    return Math.min(halfW - adx, halfH - ady);
   }
 
   // Global Magnification Constants
-  const globalStrength = maxDepth * 0.5; // Increased from 0.2 to 0.5 for deeper interior refraction
+  const globalStrength = maxDepth * 0.65; // Increased from 0.15 for strong interior refraction
 
-  // Ultra-optimized Hybrid Height Field Function
-  // Blends Custom Cubic Spline Bevel with Sine Wave Global Dome
-  function getH(inside: number): number {
+  // Hybrid Height Field: Official Apple Quartic Root Bevel + Hacky Bivariate Paraboloid Dome
+  function getH(px: number, py: number, inside: number): number {
     if (inside <= 0) return 0;
     
     let h = 0;
-    // 1. Custom Cubic Spline Bevel (C2 Continuous: y = 1 - (1-t)^3)
+    // 1. Anti-aliased Apple Bevel (Quartic Polynomial: y = 1 - (1 - t)⁴)
+    // Finite slope at the edge completely removes jaggies while keeping the steep refraction
     if (inside < bevelWidth) {
       const invT = 1.0 - (inside / bevelWidth);
-      h += bevelWidth * (1.0 - invT * invT * invT);
+      const invT4 = invT * invT * invT * invT;
+      h += bevelWidth * (1.0 - invT4);
     } else {
       h += bevelWidth;
     }
     
-    // 2. Custom Sine Global Dome for optimal central lens refraction
-    const tGlobal = inside < maxDepth ? (inside / maxDepth) : 1.0;
-    h += globalStrength * Math.sin(tGlobal * Math.PI * 0.5);
+    // 2. Hacky Bivariate Paraboloid Dome (Completely removes "X" artifact, soft center refraction)
+    const u = (px - cx) / halfW;
+    const v = (py - cy) / halfH;
+    const dome = (1.0 - u * u) * (1.0 - v * v);
+    
+    h += globalStrength * dome;
     
     return h;
   }
@@ -120,7 +114,7 @@ export function generateDisplacementMap(
     const py = y + 0.5;
 
     // Sliding Window: pre-calculate the very first 'right' point of the row
-    let prevHx = getH(getInside(0.5, py));
+    let prevHx = getH(0.5, py, getInside(0.5, py));
 
     for (let x = 0; x < totalW; x++) {
       const px = x + 0.5;
@@ -133,14 +127,14 @@ export function generateDisplacementMap(
         data[i + 2] = 128;
         data[i + 3] = 255;
         // Keep window updated
-        prevHx = getH(getInside(px + 1.5, py));
+        prevHx = getH(px + 1.5, py, getInside(px + 1.5, py));
         continue;
       }
 
       // 1. Sliding Window Optimization (33% fewer getH calls)
       const h0 = prevHx;
-      const hx = getH(getInside(px + 1.5, py));
-      const hy = getH(getInside(px, py + 1.5));
+      const hx = getH(px + 1.5, py, getInside(px + 1.5, py));
+      const hy = getH(px, py + 1.5, getInside(px, py + 1.5));
       prevHx = hx; // Shift window rightwards
 
       const dHdx = hx - h0;
