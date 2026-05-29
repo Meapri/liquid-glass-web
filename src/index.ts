@@ -7,4 +7,4 @@ export type {
   LiquidGlassVariant,
   LiquidGlassScheme,
 } from './core/types';
-export type { LiquidMenuOptions, LiquidMenuPlacement, LiquidSheetOptions } from './core/Morph';
+export type { LiquidMenuOptions, LiquidMenuPlacement, LiquidSheetOptions, LensFlexable } from './core/Morph';
