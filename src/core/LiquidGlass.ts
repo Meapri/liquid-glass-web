@@ -218,7 +218,7 @@ export class LiquidGlass {
     }
 
     if (this.filter) {
-      this.filter.updateBlur(this.options.blur);
+      this.filter.updateBlur(this.effectiveBlur());
       this.filter.updateRefraction(this.effectiveRefraction());
       this.filter.updateSaturation(this.options.saturation);
     }
@@ -353,6 +353,17 @@ export class LiquidGlass {
   }
 
   /**
+   * Backdrop blur is an absolute stdDeviation, so a fixed value looks far
+   * stronger on a short element (a 52px nav bar) than on a tall panel. Cap it to
+   * ~14% of the short side so thin bars/toolbars get a proportionally lighter
+   * frost and the material reads consistently across sizes.
+   */
+  private effectiveBlur(): number {
+    const cap = Math.min(this.currentWidth, this.currentHeight) * 0.14;
+    return Math.min(this.options.blur, cap);
+  }
+
+  /**
    * The displacement map is a smooth gradient that feImage bilinear-upscales to
    * the element box, so below the 'high' tier it renders at 1× — halving its
    * canvas area (and its PNG-encode cost) versus the specular map with no
@@ -385,7 +396,7 @@ export class LiquidGlass {
     this.filter = new FilterChain({
       refraction: this.effectiveRefraction(),
       chromaticAberration: this.effectiveChromatic(),
-      blur: this.options.blur,
+      blur: this.effectiveBlur(),
       saturation: this.options.saturation,
       width: this.currentWidth,
       height: this.currentHeight,
@@ -433,6 +444,9 @@ export class LiquidGlass {
         refraction: this.options.refraction,
       });
       this.filter.updateDisplacement(disp.url, this.currentWidth, this.currentHeight, disp.padding);
+      // Blur and refraction are size-dependent (capped to the short side) — re-apply.
+      this.filter.updateBlur(this.effectiveBlur());
+      this.filter.updateRefraction(this.effectiveRefraction());
       if (this.options.specular) {
         const specUrl = getSpecularMap({
           width: this.currentWidth,

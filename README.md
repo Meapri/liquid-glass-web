@@ -87,7 +87,7 @@ LiquidInteractive.initAll();
 | `thickness` | `30` | lens depth (glass "thickness") in px — deeper ⇒ more pronounced edge lensing (Apple: thicker material lenses more). Scales the dome depth. |
 | `refraction` | `44` | max edge displacement in px — overall lensing strength (auto-capped to ½ the short side so small controls stay coherent) |
 | `chromaticAberration` | `0.03` | 0–1; subtle RGB fringing at the rim (kept low so the body stays clean) |
-| `blur` | per-variant | backdrop frost stdDeviation, applied before refraction; default by variant (`regular` 10, `clear` 3, `tinted` 14) |
+| `blur` | per-variant | backdrop frost stdDeviation, applied before refraction; default by variant (`regular` 10, `clear` 3, `tinted` 14). Auto-capped to ~14% of the short side so thin bars/toolbars aren't over-frosted (an absolute blur looks far stronger on a 52px nav than a 200px panel). |
 | `saturation` | `150` | % saturation applied after displacement (Apple keeps the backdrop close to neutral, not over-vivid) |
 | `variant` | `'regular'` | `'regular'` (frosted, legible) \| `'clear'` (most transparent, for bold content) \| `'tinted'` — sets tint and the default frost |
 | `scheme` | `'auto'` | `'light'` \| `'dark'` \| `'auto'` |
