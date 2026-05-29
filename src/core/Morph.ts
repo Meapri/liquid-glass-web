@@ -167,8 +167,8 @@ export class LiquidMenu {
     const t = this.trigger.getBoundingClientRect();
     const m = this.menu.getBoundingClientRect();
 
-    // Origin = the trigger's centre, in the menu's local coordinates, so the
-    // menu scales toward/away from the control it came from.
+    // Anchor = the trigger's centre, in the menu's local coordinates: the menu
+    // unfurls FROM the control it came from.
     const ox = Math.max(0, Math.min(m.width, t.left + t.width / 2 - m.left));
     const oy = Math.max(0, Math.min(m.height, t.top + t.height / 2 - m.top));
     this.menu.style.transformOrigin = `${ox}px ${oy}px`;
@@ -178,16 +178,34 @@ export class LiquidMenu {
     if (this.reduceMotion) {
       // No elastic morph — just show/hide.
       this.menu.style.transform = '';
+      this.menu.style.clipPath = '';
       this.glass?.flexRefraction(opening ? null : 0);
       if (!opening) this.hideAfterClose();
       return;
     }
 
-    // Grow with a gel spring + a brief light flare (energize with light), while
-    // the lensing ramps up — the menu reads as thicker, more refractive glass as
-    // it reaches full size.
-    const seed = { transform: 'scale(0.14)', opacity: 0, filter: 'brightness(1.35) saturate(1.3)' };
-    const full = { transform: 'scale(1)', opacity: 1, filter: 'brightness(1) saturate(1)' };
+    // Reveal as a circle expanding from the trigger anchor — the menu *unfurls
+    // out of the button* (content stays full-size, never zoom-distorted) — with a
+    // gentle scale spring and a brief light flare. The lensing ramp (rampLens)
+    // makes the glass refraction draw in as it materialises.
+    const radius = Math.max(
+      Math.hypot(ox, oy),
+      Math.hypot(m.width - ox, oy),
+      Math.hypot(ox, m.height - oy),
+      Math.hypot(m.width - ox, m.height - oy)
+    );
+    const seed = {
+      clipPath: `circle(0px at ${ox}px ${oy}px)`,
+      transform: 'scale(0.96)',
+      opacity: 0,
+      filter: 'brightness(1.3) saturate(1.25)',
+    };
+    const full = {
+      clipPath: `circle(${radius}px at ${ox}px ${oy}px)`,
+      transform: 'scale(1)',
+      opacity: 1,
+      filter: 'brightness(1) saturate(1)',
+    };
     const dur = opening ? 480 : 240;
     this.anim = this.menu.animate(opening ? [seed, full] : [full, seed], {
       duration: dur,
@@ -231,6 +249,7 @@ export class LiquidMenu {
     this.menu.style.visibility = 'hidden';
     this.menu.style.pointerEvents = 'none';
     this.menu.style.transform = '';
+    this.menu.style.clipPath = '';
   }
 }
 
