@@ -82,7 +82,10 @@ export class FilterChain {
   constructor(initial: FilterParams) {
     this.defs = ensureDefs(initial.root);
     this.id = `lg-filter-${++filterCounter}`;
-    this.chromaticEnabled = initial.chromaticAberration > 0.001;
+    // The 3-pass chromatic split triples the GPU displacement work, so only pay
+    // for it when the fringe is actually visible. Below this a single pass is
+    // used — a ~0.03 fringe is imperceptible anyway, so there's no quality loss.
+    this.chromaticEnabled = initial.chromaticAberration > 0.12;
 
     this.filter = document.createElementNS(SVG_NS, 'filter');
     this.filter.setAttribute('id', this.id);

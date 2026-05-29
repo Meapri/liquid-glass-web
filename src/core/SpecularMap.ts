@@ -17,6 +17,7 @@
  */
 
 import { makeSurface } from './SurfaceField';
+import { scratchCanvas, scratchHTMLCanvas } from './scratch';
 
 export interface SpecularMapParams {
   width: number;
@@ -43,15 +44,8 @@ export function generateSpecularMap(params: SpecularMapParams): string {
   const r = Math.max(0, Math.min(Math.min(w, h) / 2, params.radius * dpr));
   const intensity = Math.max(0, params.intensity);
 
-  const canvas =
-    typeof OffscreenCanvas !== 'undefined'
-      ? new OffscreenCanvas(w, h)
-      : Object.assign(document.createElement('canvas'), { width: w, height: h });
-  if (canvas instanceof HTMLCanvasElement) {
-    canvas.width = w;
-    canvas.height = h;
-  }
-  const ctx = (canvas as HTMLCanvasElement | OffscreenCanvas).getContext('2d') as
+  const canvas = scratchCanvas('spec', w, h);
+  const ctx = canvas.getContext('2d') as
     | CanvasRenderingContext2D
     | OffscreenCanvasRenderingContext2D;
 
@@ -107,9 +101,7 @@ export function generateSpecularMap(params: SpecularMapParams): string {
 }
 
 function offscreenToDataURL(canvas: OffscreenCanvas): string {
-  const tmp = document.createElement('canvas');
-  tmp.width = canvas.width;
-  tmp.height = canvas.height;
+  const tmp = scratchHTMLCanvas('encode', canvas.width, canvas.height);
   const tctx = tmp.getContext('2d', { willReadFrequently: true })!;
   tctx.drawImage(canvas as unknown as CanvasImageSource, 0, 0);
   return tmp.toDataURL('image/webp', 1.0);
