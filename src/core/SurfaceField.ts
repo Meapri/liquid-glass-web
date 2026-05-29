@@ -39,7 +39,7 @@ export interface SurfaceParams {
 
 /** Cap the in-plane lens slope so the very edge can't fold the backdrop.
  * Higher ⇒ steeper, thicker-looking glass edges (more apparent volume). */
-const GRAD_CLAMP = 6.0;
+const GRAD_CLAMP = 7.0;
 /** Edge concentration: higher = flatter clear centre, bend pushed to the rim so
  * only the border refracts differently while the body stays clear. */
 const LENS_K = 3.2;

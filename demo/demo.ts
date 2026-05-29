@@ -1,4 +1,4 @@
-import { LiquidGlass, LiquidInteractive, LiquidMenu, LiquidSheet } from '../src';
+import { LiquidGlass, LiquidInteractive, LiquidMenu, LiquidSheet, LiquidSelection } from '../src';
 import type { LiquidGlassOptions, LiquidGlassVariant } from '../src';
 
 interface GlassConfig extends LiquidGlassOptions {}
@@ -120,12 +120,13 @@ if (ctxTrigger && ctxEl) {
   }
 }
 
-// Tab bar active toggle (purely visual)
-for (const tab of Array.from(document.querySelectorAll<HTMLButtonElement>('.tab'))) {
-  tab.addEventListener('click', () => {
-    for (const t of Array.from(document.querySelectorAll<HTMLButtonElement>('.tab'))) {
-      t.classList.toggle('active', t === tab);
-    }
+// Tab bar — a tinted glass selection capsule glides to the active tab.
+const tabbar = document.getElementById('lg-tabbar');
+if (tabbar) {
+  new LiquidSelection(tabbar, {
+    items: '.tab',
+    initial: 0,
+    tint: 'rgba(255, 255, 255, 0.16)',
   });
 }
 
