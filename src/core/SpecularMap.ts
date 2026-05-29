@@ -53,6 +53,8 @@ export function generateSpecularMap(params: SpecularMapParams): string {
   const lightDirX = -0.7071; // Top-Left
   const lightDirY = -0.7071;
   const strengthMult = intensity;
+  const kSmooth = 4.0;
+  const kSmooth2 = kSmooth * kSmooth;
 
   // ─── Precomputed reciprocals ───
   const invHalfW = 1.0 / halfW;
@@ -87,14 +89,16 @@ export function generateSpecularMap(params: SpecularMapParams): string {
         const invD = dist > 0.001 ? 1.0 / dist : 0;
         dIdx = -sx * qx * invD;
         dIdy = -sy * qy * invD;
-      } else if (halfW - adx < halfH - ady) {
-        inside = halfW - adx;
-        dIdx = -sx;
-        dIdy = 0;
       } else {
-        inside = halfH - ady;
-        dIdx = 0;
-        dIdy = -sy;
+        const a = halfW - adx;
+        const b = halfH - ady;
+        const diff = a - b;
+        const denom = Math.sqrt(diff * diff + kSmooth2);
+        inside = (a + b - denom) * 0.5;
+        const wa = (1.0 - diff / denom) * 0.5;
+        const wb = (1.0 + diff / denom) * 0.5;
+        dIdx = wa * (-sx);
+        dIdy = wb * (-sy);
       }
 
       if (inside <= 0) continue;

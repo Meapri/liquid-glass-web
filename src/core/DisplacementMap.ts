@@ -74,6 +74,8 @@ export function generateDisplacementMap(
   const eta = 1.0 / 1.45; // Glass IOR
   const etaSq = eta * eta;
   const directAmp = 0.6; // Apple-style direct normal amplification for dome interior
+  const kSmooth = 4.0;   // Smooth-min radius to eliminate X-crease (pixels)
+  const kSmooth2 = kSmooth * kSmooth; // Pre-squared for perf
 
   // ─── Precomputed reciprocals for dome derivatives ───
   const invHalfW = 1.0 / halfW;
@@ -104,22 +106,26 @@ export function generateDisplacementMap(
       let dIdy: number; // ∂(inside)/∂y
 
       if (qx > 0 && qy > 0) {
-        // Corner arc — gradient points radially inward
+        // Corner arc — gradient points radially inward (already C∞ smooth)
         const dist = Math.sqrt(qx * qx + qy * qy);
         inside = r - dist;
         const invD = dist > 0.001 ? 1.0 / dist : 0;
         dIdx = -sx * qx * invD;
         dIdy = -sy * qy * invD;
-      } else if (halfW - adx < halfH - ady) {
-        // Closer to left/right edge
-        inside = halfW - adx;
-        dIdx = -sx;
-        dIdy = 0;
       } else {
-        // Closer to top/bottom edge
-        inside = halfH - ady;
-        dIdx = 0;
-        dIdy = -sy;
+        // Flat region — use Smooth Minimum instead of min(a,b) to eliminate
+        // the X-shaped Mach band crease where (halfW - adx) == (halfH - ady).
+        // smoothMin(a, b, k) = (a + b - √((a-b)² + k²)) / 2
+        const a = halfW - adx;
+        const b = halfH - ady;
+        const diff = a - b;
+        const denom = Math.sqrt(diff * diff + kSmooth2);
+        inside = (a + b - denom) * 0.5;
+        // Analytical gradient weights: wa + wb = 1, smooth blend
+        const wa = (1.0 - diff / denom) * 0.5; // weight for a (x-edge)
+        const wb = (1.0 + diff / denom) * 0.5; // weight for b (y-edge)
+        dIdx = wa * (-sx);
+        dIdy = wb * (-sy);
       }
 
       if (inside <= 0) {
