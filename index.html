@@ -3,45 +3,34 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-
-    <!-- TODO: 본인 정보로 교체하세요 -->
-    <title>홍길동 — 백엔드 / 풀스택 개발자</title>
-    <meta name="description" content="백엔드 · 풀스택 개발자 홍길동의 포트폴리오" />
-    <meta name="author" content="홍길동" />
-
-    <!-- Open Graph (SNS 공유 미리보기) — TODO: 교체 -->
-    <meta property="og:title" content="홍길동 — 백엔드 / 풀스택 개발자" />
-    <meta property="og:description" content="확장 가능한 백엔드 시스템을 설계하고 만드는 개발자" />
-    <meta property="og:type" content="website" />
-
+    <title>Liquid Glass — Web Engine</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=SF+Pro+Display:wght@400;600;700&display=swap"
     />
     <link rel="stylesheet" href="/src/styles/liquid-glass.css" />
-    <link rel="stylesheet" href="/portfolio/portfolio.css" />
+    <link rel="stylesheet" href="/demo/styles.css" />
   </head>
   <body>
-    <!-- iOS 26 Liquid Morphing Gooey Filter (배경 오브가 유기적으로 뭉치도록) -->
-    <svg style="position: absolute; width: 0; height: 0" aria-hidden="true">
+    <!-- iOS 26 Liquid Morphing Gooey Filter -->
+    <svg style="position: absolute; width: 0; height: 0;" aria-hidden="true">
       <defs>
         <filter id="ios26-gooey">
           <feGaussianBlur in="SourceGraphic" stdDeviation="40" result="blur" />
-          <feColorMatrix
-            in="blur"
-            mode="matrix"
-            values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 60 -30"
-            result="gooey"
-          />
+          <feColorMatrix in="blur" mode="matrix" values="
+            1 0 0 0 0
+            0 1 0 0 0
+            0 0 1 0 0
+            0 0 0 60 -30" result="gooey" />
           <feComposite in="SourceGraphic" in2="gooey" operator="atop" />
         </filter>
       </defs>
     </svg>
 
-    <!-- ===== 배경 씬 ===== -->
     <div class="background">
+      <div class="bg-layer bg-photo"></div>
       <div class="bg-layer bg-mesh"></div>
       <div class="bg-orbs">
         <span class="orb orb-1"></span>
@@ -51,404 +40,185 @@
       </div>
     </div>
 
-    <!-- ===== 상단 네비게이션 ===== -->
-    <header
-      class="nav liquid-glass"
-      id="lg-nav"
-      data-glass='{"radius":"pill","thickness":14,"refraction":24,"variant":"regular"}'
-    >
-      <a class="nav-brand" href="#home">
+    <!-- Top status / nav bar -->
+    <header class="nav liquid-glass" id="lg-nav" data-glass='{"radius":"pill","thickness":14,"refraction":24,"variant":"regular"}'>
+      <div class="nav-brand">
         <span class="brand-dot"></span>
-        <span class="brand-text">홍길동</span>
-      </a>
+        <span class="brand-text">Liquid Glass</span>
+      </div>
       <nav class="nav-links">
-        <a href="#about">소개</a>
-        <a href="#skills">기술</a>
-        <a href="#projects">프로젝트</a>
-        <a href="#experience">경력</a>
-        <a href="#contact">연락처</a>
+        <a href="#overview">Overview</a>
+        <a href="#patterns">Patterns</a>
+        <a href="#playground">Playground</a>
       </nav>
-      <a
-        class="nav-cta liquid-glass lg-interactive"
-        id="lg-nav-cta"
-        href="#contact"
-        data-glass='{"radius":"pill","thickness":12,"refraction":18,"variant":"tinted","blur":3}'
-      >
-        이력서 보기
-      </a>
+      <button class="nav-cta liquid-glass lg-interactive" id="lg-nav-cta" data-glass='{"radius":"pill","thickness":12,"refraction":18,"variant":"tinted","blur":3}'>
+        Get started
+      </button>
     </header>
 
     <main class="canvas">
-      <!-- ===== Hero ===== -->
-      <section id="home" class="hero">
-        <span class="hero-eyebrow lg-reveal">백엔드 · 풀스택 개발자</span>
-        <h1 class="lg-reveal">
-          안녕하세요,<br />
-          <em>홍길동</em>입니다.
-        </h1>
-        <p class="lg-reveal">
-          <!-- TODO: 한두 문장의 자기소개 / 강점 -->
-          확장 가능하고 신뢰할 수 있는 백엔드 시스템을 설계합니다.
-          문제의 본질을 파고들어 단순하고 견고한 해법을 만드는 것을 좋아합니다.
-        </p>
-        <div class="hero-cta lg-reveal">
-          <a
-            class="btn btn-lg liquid-glass lg-interactive"
-            href="#projects"
-            data-glass='{"radius":"pill","thickness":14,"refraction":22,"variant":"regular"}'
-          >
-            프로젝트 보기
-          </a>
-          <a
-            class="btn btn-lg liquid-glass lg-interactive"
-            href="#contact"
-            data-glass='{"radius":"pill","thickness":14,"refraction":22,"variant":"clear"}'
-          >
-            연락하기
-          </a>
-        </div>
-
-        <!-- 핵심 지표 -->
-        <div class="hero-stats">
-          <article
-            class="stat liquid-glass lg-reveal lg-interactive"
-            data-glass='{"radius":22,"thickness":16,"refraction":24,"variant":"regular"}'
-          >
-            <strong>0+</strong>
-            <span>년 경력</span>
-          </article>
-          <article
-            class="stat liquid-glass lg-reveal lg-interactive"
-            style="--d: 80ms"
-            data-glass='{"radius":22,"thickness":16,"refraction":24,"variant":"regular"}'
-          >
-            <strong>0+</strong>
-            <span>완료 프로젝트</span>
-          </article>
-          <article
-            class="stat liquid-glass lg-reveal lg-interactive"
-            style="--d: 160ms"
-            data-glass='{"radius":22,"thickness":16,"refraction":24,"variant":"regular"}'
-          >
-            <strong>0+</strong>
-            <span>오픈소스 기여</span>
-          </article>
-        </div>
-      </section>
-
-      <!-- ===== 소개 ===== -->
-      <section id="about" class="section">
-        <div class="section-head lg-reveal">
-          <span class="section-kicker">01 — About</span>
-          <h2>소개</h2>
-        </div>
-        <div
-          class="about-card liquid-glass lg-reveal"
-          data-glass='{"radius":28,"thickness":22,"refraction":36,"saturation":175,"variant":"regular"}'
-        >
-          <div class="about-avatar" aria-hidden="true">
-            <!-- TODO: 프로필 사진 → background-image 로 교체하거나 <img> 삽입 -->
-            <span>📷</span>
-          </div>
-          <div class="about-body">
-            <p>
-              <!-- TODO: 본인 이야기로 교체 -->
-              사용자에게 가치를 전달하는 안정적인 서비스를 만드는 데 집중합니다.
-              대규모 트래픽 처리, API 설계, 데이터 모델링에 관심이 많으며,
-              팀과 함께 성장하는 협업 문화를 중요하게 생각합니다.
-            </p>
-            <ul class="about-facts">
-              <li><span>위치</span><strong>대한민국, 서울</strong></li>
-              <li><span>관심 분야</span><strong>분산 시스템 · 클라우드</strong></li>
-              <li><span>현재 상태</span><strong>새로운 기회 탐색 중</strong></li>
-              <li><span>이메일</span><strong>you@example.com</strong></li>
-            </ul>
-          </div>
-        </div>
-      </section>
-
-      <!-- ===== 기술 스택 ===== -->
-      <section id="skills" class="section">
-        <div class="section-head lg-reveal">
-          <span class="section-kicker">02 — Skills</span>
-          <h2>기술 스택</h2>
-        </div>
-        <div class="skills-grid">
-          <article
-            class="skill-card liquid-glass lg-reveal lg-interactive"
-            data-glass='{"radius":24,"thickness":18,"refraction":28,"variant":"regular"}'
-          >
-            <h3>Languages</h3>
-            <div class="chips">
-              <span class="chip">Java</span>
-              <span class="chip">Kotlin</span>
-              <span class="chip">Python</span>
-              <span class="chip">TypeScript</span>
-              <span class="chip">Go</span>
-            </div>
-          </article>
-
-          <article
-            class="skill-card liquid-glass lg-reveal lg-interactive"
-            style="--d: 80ms"
-            data-glass='{"radius":24,"thickness":18,"refraction":28,"variant":"regular"}'
-          >
-            <h3>Backend</h3>
-            <div class="chips">
-              <span class="chip">Spring Boot</span>
-              <span class="chip">Node.js</span>
-              <span class="chip">FastAPI</span>
-              <span class="chip">gRPC</span>
-              <span class="chip">GraphQL</span>
-            </div>
-          </article>
-
-          <article
-            class="skill-card liquid-glass lg-reveal lg-interactive"
-            style="--d: 160ms"
-            data-glass='{"radius":24,"thickness":18,"refraction":28,"variant":"regular"}'
-          >
-            <h3>Database</h3>
-            <div class="chips">
-              <span class="chip">PostgreSQL</span>
-              <span class="chip">MySQL</span>
-              <span class="chip">Redis</span>
-              <span class="chip">MongoDB</span>
-              <span class="chip">Kafka</span>
-            </div>
-          </article>
-
-          <article
-            class="skill-card liquid-glass lg-reveal lg-interactive"
-            data-glass='{"radius":24,"thickness":18,"refraction":28,"variant":"regular"}'
-          >
-            <h3>DevOps · Infra</h3>
-            <div class="chips">
-              <span class="chip">Docker</span>
-              <span class="chip">Kubernetes</span>
-              <span class="chip">AWS</span>
-              <span class="chip">Terraform</span>
-              <span class="chip">GitHub Actions</span>
-            </div>
-          </article>
-
-          <article
-            class="skill-card liquid-glass lg-reveal lg-interactive"
-            style="--d: 80ms"
-            data-glass='{"radius":24,"thickness":18,"refraction":28,"variant":"regular"}'
-          >
-            <h3>Frontend</h3>
-            <div class="chips">
-              <span class="chip">React</span>
-              <span class="chip">Next.js</span>
-              <span class="chip">Vue</span>
-              <span class="chip">Tailwind</span>
-            </div>
-          </article>
-
-          <article
-            class="skill-card liquid-glass lg-reveal lg-interactive"
-            style="--d: 160ms"
-            data-glass='{"radius":24,"thickness":18,"refraction":28,"variant":"regular"}'
-          >
-            <h3>Tools</h3>
-            <div class="chips">
-              <span class="chip">Git</span>
-              <span class="chip">Linux</span>
-              <span class="chip">Grafana</span>
-              <span class="chip">Jira</span>
-            </div>
-          </article>
-        </div>
-      </section>
-
-      <!-- ===== 프로젝트 ===== -->
-      <section id="projects" class="section">
-        <div class="section-head lg-reveal">
-          <span class="section-kicker">03 — Projects</span>
-          <h2>프로젝트</h2>
-        </div>
-        <div class="projects-grid">
-          <!-- 프로젝트 카드 (복사해서 추가하세요) -->
-          <article
-            class="project-card liquid-glass lg-reveal lg-interactive"
-            data-glass='{"radius":26,"thickness":20,"refraction":32,"saturation":175,"variant":"regular"}'
-          >
-            <div class="project-thumb" aria-hidden="true"></div>
-            <div class="project-body">
-              <div class="project-top">
-                <h3>프로젝트 제목</h3>
-                <span class="project-year">2025</span>
-              </div>
-              <p>
-                <!-- TODO: 프로젝트 한 줄 설명, 본인의 역할, 임팩트(지표) -->
-                프로젝트에 대한 간단한 설명과 본인이 맡은 역할, 성과를 적어주세요.
-              </p>
-              <div class="chips">
-                <span class="chip">Spring Boot</span>
-                <span class="chip">PostgreSQL</span>
-                <span class="chip">AWS</span>
-              </div>
-              <div class="project-links">
-                <a href="#" target="_blank" rel="noopener">GitHub ↗</a>
-                <a href="#" target="_blank" rel="noopener">Live Demo ↗</a>
-              </div>
-            </div>
-          </article>
-
-          <article
-            class="project-card liquid-glass lg-reveal lg-interactive"
-            style="--d: 80ms"
-            data-glass='{"radius":26,"thickness":20,"refraction":32,"saturation":175,"variant":"regular"}'
-          >
-            <div class="project-thumb" aria-hidden="true"></div>
-            <div class="project-body">
-              <div class="project-top">
-                <h3>프로젝트 제목</h3>
-                <span class="project-year">2024</span>
-              </div>
-              <p>프로젝트에 대한 간단한 설명과 본인이 맡은 역할, 성과를 적어주세요.</p>
-              <div class="chips">
-                <span class="chip">Kotlin</span>
-                <span class="chip">Kafka</span>
-                <span class="chip">Redis</span>
-              </div>
-              <div class="project-links">
-                <a href="#" target="_blank" rel="noopener">GitHub ↗</a>
-              </div>
-            </div>
-          </article>
-
-          <article
-            class="project-card liquid-glass lg-reveal lg-interactive"
-            style="--d: 160ms"
-            data-glass='{"radius":26,"thickness":20,"refraction":32,"saturation":175,"variant":"regular"}'
-          >
-            <div class="project-thumb" aria-hidden="true"></div>
-            <div class="project-body">
-              <div class="project-top">
-                <h3>프로젝트 제목</h3>
-                <span class="project-year">2024</span>
-              </div>
-              <p>프로젝트에 대한 간단한 설명과 본인이 맡은 역할, 성과를 적어주세요.</p>
-              <div class="chips">
-                <span class="chip">Node.js</span>
-                <span class="chip">GraphQL</span>
-                <span class="chip">Docker</span>
-              </div>
-              <div class="project-links">
-                <a href="#" target="_blank" rel="noopener">GitHub ↗</a>
-                <a href="#" target="_blank" rel="noopener">Live Demo ↗</a>
-              </div>
-            </div>
-          </article>
-        </div>
-      </section>
-
-      <!-- ===== 경력 ===== -->
-      <section id="experience" class="section">
-        <div class="section-head lg-reveal">
-          <span class="section-kicker">04 — Experience</span>
-          <h2>경력 · 학력</h2>
-        </div>
-        <div class="timeline">
-          <article
-            class="timeline-item liquid-glass lg-reveal"
-            data-glass='{"radius":22,"thickness":16,"refraction":24,"variant":"regular"}'
-          >
-            <div class="timeline-period">2023 — 현재</div>
-            <div class="timeline-content">
-              <h3>백엔드 엔지니어 · 회사명</h3>
-              <p>
-                <!-- TODO: 주요 업무, 사용 기술, 성과 -->
-                담당한 핵심 업무와 사용 기술, 정량적 성과를 적어주세요.
-              </p>
-            </div>
-          </article>
-
-          <article
-            class="timeline-item liquid-glass lg-reveal"
-            style="--d: 80ms"
-            data-glass='{"radius":22,"thickness":16,"refraction":24,"variant":"regular"}'
-          >
-            <div class="timeline-period">2021 — 2023</div>
-            <div class="timeline-content">
-              <h3>주니어 개발자 · 회사명</h3>
-              <p>담당한 핵심 업무와 사용 기술, 정량적 성과를 적어주세요.</p>
-            </div>
-          </article>
-
-          <article
-            class="timeline-item liquid-glass lg-reveal"
-            style="--d: 160ms"
-            data-glass='{"radius":22,"thickness":16,"refraction":24,"variant":"regular"}'
-          >
-            <div class="timeline-period">2017 — 2021</div>
-            <div class="timeline-content">
-              <h3>컴퓨터공학 학사 · 대학명</h3>
-              <p>전공, 주요 활동, 수상 내역 등을 적어주세요.</p>
-            </div>
-          </article>
-        </div>
-      </section>
-
-      <!-- ===== 연락처 ===== -->
-      <section id="contact" class="section">
-        <div class="section-head lg-reveal">
-          <span class="section-kicker">05 — Contact</span>
-          <h2>연락처</h2>
-        </div>
-        <div
-          class="contact-card liquid-glass lg-reveal"
-          data-glass='{"radius":32,"thickness":24,"refraction":40,"saturation":175,"variant":"regular","blur":3}'
-        >
-          <p class="contact-lead">
-            함께 일하고 싶으신가요? 언제든 편하게 연락 주세요.
+      <!-- Hero / overview -->
+      <section id="overview" class="hero">
+        <div class="hero-text">
+          <h1>iOS 26 — on the web.</h1>
+          <p>
+            GPU-accelerated refraction via <code>feDisplacementMap</code>,
+            Chromium-native <code>backdrop-filter</code>, and a baked specular
+            rim — all composited in one pass.
           </p>
-          <div class="contact-links">
-            <a
-              class="contact-link liquid-glass lg-interactive"
-              href="mailto:you@example.com"
-              data-glass='{"radius":"pill","thickness":12,"refraction":18,"variant":"clear"}'
-            >
-              ✉️ Email
-            </a>
-            <a
-              class="contact-link liquid-glass lg-interactive"
-              href="https://github.com/yourname"
-              target="_blank"
-              rel="noopener"
-              data-glass='{"radius":"pill","thickness":12,"refraction":18,"variant":"clear"}'
-            >
-              GitHub
-            </a>
-            <a
-              class="contact-link liquid-glass lg-interactive"
-              href="https://linkedin.com/in/yourname"
-              target="_blank"
-              rel="noopener"
-              data-glass='{"radius":"pill","thickness":12,"refraction":18,"variant":"clear"}'
-            >
-              LinkedIn
-            </a>
-            <a
-              class="contact-link liquid-glass lg-interactive"
-              href="/resume.pdf"
-              target="_blank"
-              rel="noopener"
-              data-glass='{"radius":"pill","thickness":12,"refraction":18,"variant":"tinted"}'
-            >
-              📄 이력서 (PDF)
-            </a>
+        </div>
+
+        <div class="hero-cards">
+          <article class="card liquid-glass lg-entrance lg-interactive" id="lg-card-1" data-glass='{"radius":28,"thickness":22,"refraction":40,"saturation":190,"variant":"regular"}'>
+            <h3>Refraction</h3>
+            <p>Pillow-rim displacement map bends backdrop pixels through the lens edge.</p>
+            <span class="badge">SVG · GPU</span>
+          </article>
+
+          <article class="card liquid-glass lg-entrance lg-interactive" style="animation-delay: 100ms" id="lg-card-2" data-glass='{"radius":28,"thickness":18,"refraction":28,"saturation":160,"chromaticAberration":0.6,"variant":"clear"}'>
+            <h3>Chromatic dispersion</h3>
+            <p>Three-channel displacement passes separate R/G/B at the rim.</p>
+            <span class="badge">3× pass</span>
+          </article>
+
+          <article class="card liquid-glass lg-entrance lg-interactive" style="animation-delay: 200ms" id="lg-card-3" data-glass='{"radius":28,"thickness":24,"refraction":36,"saturation":175,"variant":"tinted","specularIntensity":0.95}'>
+            <h3>Specular rim</h3>
+            <p>Static top-left highlight baked into the filter — zero JS per frame.</p>
+            <span class="badge">SVG · GPU</span>
+          </article>
+        </div>
+      </section>
+
+      <!-- iOS-style patterns -->
+      <section id="patterns" class="patterns">
+        <h2>iOS 26 patterns</h2>
+
+        <div class="pattern-grid">
+          <!-- Notification card -->
+          <div class="pattern-row">
+            <div class="pattern-label">Notification</div>
+            <div class="notification liquid-glass" id="lg-notif" data-glass='{"radius":22,"thickness":18,"refraction":28,"variant":"regular"}'>
+              <div class="notif-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 22a3 3 0 0 0 3-3H9a3 3 0 0 0 3 3Z" />
+                  <path d="M19 17H5l1.5-2v-5a5.5 5.5 0 1 1 11 0v5L19 17Z" />
+                </svg>
+              </div>
+              <div class="notif-body">
+                <strong>Message</strong>
+                <p>"Liquid Glass on the web — it actually refracts."</p>
+              </div>
+              <time>now</time>
+            </div>
+          </div>
+
+          <!-- Buttons row -->
+          <div class="pattern-row">
+            <div class="pattern-label">Controls</div>
+            <div class="controls-row">
+              <button class="btn liquid-glass lg-interactive" data-glass='{"radius":"pill","thickness":12,"refraction":18}'>Primary</button>
+              <button class="btn btn-md liquid-glass lg-interactive" data-glass='{"radius":"pill","thickness":14,"refraction":22}'>Secondary</button>
+              <button class="btn btn-lg liquid-glass lg-interactive" data-glass='{"radius":"pill","thickness":16,"refraction":26,"variant":"clear"}'>Tertiary</button>
+              <button class="btn-icon liquid-glass lg-interactive" aria-label="Play" data-glass='{"radius":999,"thickness":14,"refraction":22}'>
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Sheet/modal -->
+          <div class="pattern-row">
+            <div class="pattern-label">Sheet</div>
+            <div class="sheet liquid-glass" id="lg-sheet" data-glass='{"radius":36,"thickness":26,"refraction":44,"saturation":175,"variant":"regular","blur":3}'>
+              <div class="sheet-handle"></div>
+              <h3>Edit profile</h3>
+              <div class="sheet-field">
+                <label>Display name</label>
+                <input type="text" placeholder="Naen" />
+              </div>
+              <div class="sheet-field">
+                <label>Status</label>
+                <input type="text" placeholder="Building things…" />
+              </div>
+              <div class="sheet-actions">
+                <button class="btn liquid-glass lg-interactive" data-glass='{"radius":"pill","thickness":10,"refraction":14}'>Cancel</button>
+                <button class="btn btn-primary liquid-glass lg-interactive" data-glass='{"radius":"pill","thickness":10,"refraction":14,"variant":"tinted","tint":"rgba(10,132,255,0.55)"}'>Save</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Now playing widget -->
+          <div class="pattern-row">
+            <div class="pattern-label">Widget</div>
+            <div class="widget liquid-glass" id="lg-widget" data-glass='{"radius":28,"thickness":22,"refraction":36,"saturation":185,"variant":"regular"}'>
+              <div class="widget-art"></div>
+              <div class="widget-body">
+                <strong>Drift</strong>
+                <span>Lumen — Glass Cathedrals</span>
+                <div class="progress"><span style="width:42%"></span></div>
+                <div class="widget-controls">
+                  <button class="ic" aria-label="Prev"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zM9.5 12l8.5 6V6z"/></svg></button>
+                  <button class="ic ic-play" aria-label="Play"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>
+                  <button class="ic" aria-label="Next"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 6h2v12h-2zM6 18l8.5-6L6 6z"/></svg></button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
+      </section>
+
+      <!-- Live controls -->
+      <section id="playground" class="playground">
+        <div class="playground-stage">
+          <div class="play-target liquid-glass" id="lg-play"></div>
+        </div>
+        <aside class="play-panel liquid-glass" id="lg-panel" data-glass='{"radius":24,"thickness":18,"refraction":24,"variant":"regular"}'>
+          <h3>Live parameters</h3>
+          <label>Radius <span id="v-radius">36</span>px
+            <input type="range" min="0" max="240" value="36" id="i-radius" />
+          </label>
+          <label>Thickness <span id="v-thickness">26</span>px
+            <input type="range" min="4" max="80" value="26" id="i-thickness" />
+          </label>
+          <label>Refraction <span id="v-refraction">44</span>px
+            <input type="range" min="0" max="120" value="44" id="i-refraction" />
+          </label>
+          <label>Blur <span id="v-blur">3</span>px
+            <input type="range" min="0" max="20" step="0.5" value="3" id="i-blur" />
+          </label>
+          <label>Saturation <span id="v-sat">180</span>%
+            <input type="range" min="50" max="250" value="180" id="i-sat" />
+          </label>
+          <label>Chromatic aberration <span id="v-ab">0</span>
+            <input type="range" min="0" max="1" step="0.05" value="0" id="i-ab" />
+          </label>
+          <label>Specular <span id="v-spec">0.7</span>
+            <input type="range" min="0" max="1" step="0.05" value="0.7" id="i-spec" />
+          </label>
+          <div class="variant-row">
+            <button data-variant="regular" class="active">Regular</button>
+            <button data-variant="clear">Clear</button>
+            <button data-variant="tinted">Tinted</button>
+          </div>
+        </aside>
       </section>
     </main>
 
-    <footer class="footer">
-      <p>© <span id="year"></span> 홍길동 · Built with Liquid Glass</p>
-    </footer>
+    <!-- Bottom floating tab bar -->
+    <nav class="tabbar liquid-glass" id="lg-tabbar" data-glass='{"radius":"pill","thickness":18,"refraction":30,"variant":"regular","blur":3}'>
+      <button class="tab active" aria-label="Home">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-8 9 8v10a1 1 0 0 1-1 1h-5v-7H10v7H5a1 1 0 0 1-1-1z"/></svg>
+      </button>
+      <button class="tab" aria-label="Discover">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      </button>
+      <button class="tab" aria-label="Library">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 9h18M8 4v16"/></svg>
+      </button>
+      <button class="tab" aria-label="Profile">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="9" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+      </button>
+    </nav>
 
-    <script type="module" src="/portfolio/portfolio.ts"></script>
+    <script type="module" src="/demo/demo.ts"></script>
   </body>
 </html>

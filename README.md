@@ -6,53 +6,6 @@ Apple-style **Liquid Glass** for the web. Real optical refraction via SVG
 Zero WebGL contexts, zero `requestAnimationFrame` loops per instance — everything
 is composited by the browser GPU pipeline.
 
----
-
-## 📇 포트폴리오 템플릿 (취업용)
-
-이 저장소에는 위 엔진으로 만든 **개인 포트폴리오 사이트 틀**이 포함되어 있습니다.
-
-- **메인 사이트**: [`index.html`](./index.html) — Hero · 소개 · 기술 스택 · 프로젝트 ·
-  경력 · 연락처 섹션 (모두 Liquid Glass 컴포넌트). 스타일은
-  [`portfolio/portfolio.css`](./portfolio/portfolio.css), 로직은
-  [`portfolio/portfolio.ts`](./portfolio/portfolio.ts)에 있습니다.
-- **엔진 데모**: [`demo/index.html`](./demo/index.html) — 원래의 컴포넌트 갤러리
-  (`/demo/` 경로로 함께 배포됩니다).
-
-### 1. 로컬에서 보기
-
-```bash
-npm install
-npm run dev      # http://localhost:5173 → 포트폴리오
-                 # http://localhost:5173/demo/ → 엔진 데모
-```
-
-### 2. 내용 채우기
-
-모두 `index.html` 안에서 수정합니다. 채워야 할 자리는 `<!-- TODO -->` 주석으로
-표시해 두었습니다.
-
-- 이름 / 직군 / 한 줄 소개 (`<title>`, `og:` 메타, Hero)
-- 프로필 사진 → `.about-avatar`에 `background-image` 지정 또는 `<img>` 삽입
-- 기술 스택 칩(`.chip`), 프로젝트 카드(`.project-card` 블록을 복사해 추가),
-  경력 타임라인(`.timeline-item`)
-- 연락처 링크(이메일 / GitHub / LinkedIn)와 이력서 PDF
-  (`public/` 폴더에 `resume.pdf`로 두면 `/resume.pdf`로 링크됩니다)
-
-### 3. GitHub Pages로 배포
-
-[`.github/workflows/deploy.yml`](./.github/workflows/deploy.yml)가 push 시 자동으로
-빌드 후 Pages에 배포합니다. 최초 1회만 설정하면 됩니다:
-
-1. GitHub 저장소 → **Settings → Pages → Build and deployment → Source**를
-   **GitHub Actions**로 설정
-2. 설정한 브랜치(`main` 또는 작업 브랜치)에 push
-3. 잠시 후 `https://<사용자명>.github.io/<저장소명>/`에서 확인
-
-`base: './'`(상대 경로)로 빌드하므로 저장소 이름이 무엇이든 그대로 동작합니다.
-
----
-
 ## Approach
 
 - **Physically-based refraction** (Snell's law) displacement map, the way Apple's
