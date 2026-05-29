@@ -50,7 +50,7 @@ const VARIANT_TINT: Record<LiquidGlassVariant, { light: string; dark: string }> 
  * `tinted` a touch more frosted. Explicit `blur` always wins.
  */
 const VARIANT_BLUR: Record<LiquidGlassVariant, number> = {
-  regular: 10, // Apple Regular: enough frost for legibility, still see-through
+  regular: 7, // light frost — clearer so the refraction/lensing reads like real glass
   clear: 3,    // near-transparent for bold media
   tinted: 14,
 };
@@ -78,7 +78,7 @@ const DEFAULT_OPTIONS: ResolvedOptions = {
   thickness: 44, // lens depth — drives how pronounced/thick the edge lensing is
   refraction: 46, // edge lensing strength (px) — concentrated at the border
   chromaticAberration: 0.03,
-  blur: 10, // Apple Regular: light frost, backdrop still reads through
+  blur: 7, // light frost, backdrop reads through so the lensing is visible
   saturation: 150, // gentle lift, backdrop stays close to natural
   variant: 'regular',
   scheme: 'auto',

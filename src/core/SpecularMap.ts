@@ -37,6 +37,15 @@ const W_PRIMARY = 0.6; // gentle static top edge — the dynamic cursor light le
 const W_RIM = 0.1; // faint continuous line tracing the rest of the silhouette
 const GAIN = 255;
 
+// Broad convex gloss — light reflecting off the rounded glass surface, brightest
+// in the upper area, fading down. This is the soft glassy sheen ("질감") you see
+// on real Liquid Glass controls, on top of the crisp rim.
+const GLOSS_CX = 0; // upper-centre, in normalised [-1,1] coords
+const GLOSS_CY = -0.42;
+const GLOSS_RADIUS = 1.3;
+const GLOSS_EXP = 2.4;
+const W_GLOSS = 0.22;
+
 export function generateSpecularMap(params: SpecularMapParams): string {
   const dpr = params.pixelRatio;
   const w = Math.max(2, Math.round(params.width * dpr));
@@ -63,24 +72,30 @@ export function generateSpecularMap(params: SpecularMapParams): string {
       const py = y + 0.5;
 
       const d = surf.sdf(px, py);
-      if (d <= 0 || d >= lineW) continue;
+      if (d <= 0) continue; // outside the glass
 
-      // Outward in-plane edge normal = −∇(sdf) (the SDF rises going inward).
-      const eps = 0.75;
-      const gx = (surf.sdf(px + eps, py) - surf.sdf(px - eps, py)) / (2 * eps);
-      const gy = (surf.sdf(px, py + eps) - surf.sdf(px, py - eps)) / (2 * eps);
-      const gl = Math.sqrt(gx * gx + gy * gy) || 1;
-      const ox = -gx / gl;
-      const oy = -gy / gl;
+      let s = 0;
 
-      const facing = ox * LIGHT_X + oy * LIGHT_Y;
+      // Broad convex gloss — soft reflection over the upper surface.
+      const u = (px - w / 2) / (w / 2);
+      const v = (py - h / 2) / (h / 2);
+      const gdx = u - GLOSS_CX;
+      const gdy = v - GLOSS_CY;
+      const gloss = Math.max(0, 1 - Math.sqrt(gdx * gdx + gdy * gdy) / GLOSS_RADIUS);
+      if (gloss > 0) s += Math.pow(gloss, GLOSS_EXP) * W_GLOSS;
 
-      // Sharp falloff: brightest right at the edge, gone within the thin line.
-      const t = 1 - d / lineW;
-      const fade = t * t;
-
-      const primary = facing > 0 ? Math.pow(facing, PRIMARY_EXP) : 0;
-      const s = (W_PRIMARY * primary + W_RIM) * fade;
+      // Crisp edge rim — only within the thin line at the very perimeter.
+      if (d < lineW) {
+        const eps = 0.75;
+        const gx = (surf.sdf(px + eps, py) - surf.sdf(px - eps, py)) / (2 * eps);
+        const gy = (surf.sdf(px, py + eps) - surf.sdf(px, py - eps)) / (2 * eps);
+        const gl = Math.sqrt(gx * gx + gy * gy) || 1;
+        const facing = (-gx / gl) * LIGHT_X + (-gy / gl) * LIGHT_Y;
+        const t = 1 - d / lineW;
+        const fade = t * t;
+        const primary = facing > 0 ? Math.pow(facing, PRIMARY_EXP) : 0;
+        s += (W_PRIMARY * primary + W_RIM) * fade;
+      }
 
       const a = Math.min(255, s * intensity * GAIN);
       if (a <= 0) continue;
