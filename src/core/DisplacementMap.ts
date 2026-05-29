@@ -97,8 +97,8 @@ export function generateDisplacementMap(
     return t * t * t * (t * (t * 6 - 15) + 10);
   }
 
-  // Helper: Clean height field without crease (100% single SDF-based)
-  // Ensures gradient matches the rounded-rect shape perfectly, eliminating all creases.
+  // Helper: Clean height field without crease (100% single-profile transition)
+  // Eliminates all boundary creases and fold lines by using a unified non-segmented curve.
   function getHeight(px: number, py: number): number {
     const dxC = px - cx;
     const dyC = py - cy;
@@ -108,13 +108,15 @@ export function generateDisplacementMap(
     const d = getSdf(adx, ady);
     if (d <= 0) return 0;
 
-    // Bevel component: quick rise near the edge
-    const hBevel = bevelWidth * smootherstep(0, bevelWidth, d);
+    // t is normalized distance from edge (0) to center (1)
+    const t = d / maxDepth;
 
-    // Dome component: gentle readable curve over the entire depth
-    const hDome = globalStrength * smootherstep(0, maxDepth, d);
+    // A single continuous profile that rises quickly near the edge and flattens out.
+    // Because it is a single mathematical equation, there are absolutely ZERO segmented creases.
+    const profile = 1.0 - Math.pow(1.0 - t, 3.0);
+    const height = (bevelWidth + globalStrength) * smootherstep(0, 1.0, profile);
 
-    return hBevel + hDome;
+    return height;
   }
 
   // Helper: Snell's Law refract (for viewing ray I = (0, 0, -1))
