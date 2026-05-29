@@ -236,6 +236,22 @@ export class LiquidGlass {
     if (mapsChanged) this.scheduleRegen();
   }
 
+  /**
+   * Live-override the lensing (displacement) strength in px WITHOUT rebuilding
+   * the maps — a cheap per-frame GPU attribute change for morph / materialize
+   * animations (e.g. `LiquidMenu` ramping the refraction as the menu grows).
+   * Pass `null` to restore the configured value.
+   */
+  flexRefraction(px: number | null): void {
+    if (!this.filter) return;
+    this.filter.updateRefraction(px == null ? this.effectiveRefraction() : Math.max(0, px));
+  }
+
+  /** The configured (size-capped) lensing strength in px. */
+  get configuredRefraction(): number {
+    return this.effectiveRefraction();
+  }
+
   /** Detach the GPU filter but keep the instance alive (cheap show/hide). */
   suspend(): void {
     if (this.suspended || this.destroyed) return;

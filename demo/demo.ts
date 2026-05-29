@@ -78,7 +78,11 @@ if (target) {
 const menuTrigger = document.getElementById('anim-menu-trigger');
 const menuEl = document.getElementById('anim-menu');
 if (menuTrigger && menuEl) {
-  const menu = new LiquidMenu(menuTrigger, menuEl, { placement: 'bottom-start', offset: 10 });
+  const menu = new LiquidMenu(menuTrigger, menuEl, {
+    placement: 'bottom-start',
+    offset: 10,
+    glass: instances.get(menuEl),
+  });
   for (const item of Array.from(menuEl.querySelectorAll<HTMLButtonElement>('.anim-menu-item'))) {
     item.addEventListener('click', () => menu.close());
   }
@@ -106,7 +110,11 @@ if (sheetEl) {
 const ctxTrigger = document.getElementById('anim-ctx-trigger');
 const ctxEl = document.getElementById('anim-ctx');
 if (ctxTrigger && ctxEl) {
-  const ctx = new LiquidMenu(ctxTrigger, ctxEl, { placement: 'bottom-start', offset: 10 });
+  const ctx = new LiquidMenu(ctxTrigger, ctxEl, {
+    placement: 'bottom-start',
+    offset: 10,
+    glass: instances.get(ctxEl),
+  });
   for (const item of Array.from(ctxEl.querySelectorAll<HTMLButtonElement>('.ctx-item'))) {
     item.addEventListener('click', () => ctx.close());
   }

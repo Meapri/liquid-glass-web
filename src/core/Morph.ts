@@ -32,6 +32,20 @@ export interface LiquidMenuOptions {
   offset?: number;
   /** Close on outside click / Escape. Default true. */
   dismissOnOutside?: boolean;
+  /**
+   * The menu's own `LiquidGlass` instance. When given, the morph also *ramps the
+   * lensing* (the refraction grows from ~0 to full as the menu materializes) —
+   * "objects materialize … by modulating the light bending and lensing", and a
+   * menu morphing to a larger size gains "more pronounced lensing and refraction"
+   * (Meet Liquid Glass, WWDC25).
+   */
+  glass?: LensFlexable;
+}
+
+/** Minimal surface of `LiquidGlass` needed to ramp the lensing during a morph. */
+export interface LensFlexable {
+  flexRefraction(px: number | null): void;
+  readonly configuredRefraction: number;
 }
 
 const SPRING = 'cubic-bezier(0.34, 1.56, 0.64, 1)';
@@ -45,6 +59,8 @@ export class LiquidMenu {
   private dismiss: boolean;
   private open_ = false;
   private anim: Animation | null = null;
+  private glass: LensFlexable | null;
+  private lensRaf = 0;
   private reduceMotion: boolean;
 
   constructor(trigger: HTMLElement, menu: HTMLElement, options: LiquidMenuOptions = {}) {
@@ -52,6 +68,7 @@ export class LiquidMenu {
     this.menu = menu;
     this.placement = options.placement ?? 'bottom-start';
     this.offset = options.offset ?? 10;
+    this.glass = options.glass ?? null;
     this.dismiss = options.dismissOnOutside ?? true;
     this.reduceMotion =
       typeof window.matchMedia === 'function' &&
@@ -104,6 +121,7 @@ export class LiquidMenu {
     document.removeEventListener('pointerdown', this.onDocPointerDown, true);
     document.removeEventListener('keydown', this.onKeyDown);
     this.anim?.cancel();
+    if (this.lensRaf) cancelAnimationFrame(this.lensRaf);
   }
 
   // ── internals ─────────────────────────────────────────────────────────────
@@ -160,18 +178,52 @@ export class LiquidMenu {
     if (this.reduceMotion) {
       // No elastic morph — just show/hide.
       this.menu.style.transform = '';
+      this.glass?.flexRefraction(opening ? null : 0);
       if (!opening) this.hideAfterClose();
       return;
     }
 
-    const seed = { transform: 'scale(0.16)', opacity: 0 };
-    const full = { transform: 'scale(1)', opacity: 1 };
+    // Grow with a gel spring + a brief light flare (energize with light), while
+    // the lensing ramps up — the menu reads as thicker, more refractive glass as
+    // it reaches full size.
+    const seed = { transform: 'scale(0.14)', opacity: 0, filter: 'brightness(1.35) saturate(1.3)' };
+    const full = { transform: 'scale(1)', opacity: 1, filter: 'brightness(1) saturate(1)' };
+    const dur = opening ? 480 : 240;
     this.anim = this.menu.animate(opening ? [seed, full] : [full, seed], {
-      duration: opening ? 460 : 240,
+      duration: dur,
       easing: opening ? SPRING : OUT_EASE,
       fill: 'forwards',
     });
     if (!opening) this.anim.onfinish = () => this.hideAfterClose();
+
+    this.rampLens(opening, dur);
+  }
+
+  /**
+   * Ramp the menu's lensing so the refraction grows in as it materialises (open)
+   * / recedes as it collapses (close) — "modulating the light bending and
+   * lensing." Cheap per-frame displacement-scale change, no map rebuild.
+   */
+  private rampLens(opening: boolean, dur: number): void {
+    if (!this.glass) return;
+    if (this.lensRaf) cancelAnimationFrame(this.lensRaf);
+    const target = this.glass.configuredRefraction;
+    const from = opening ? 0 : target;
+    const to = opening ? target : 0;
+    const start = performance.now();
+    const step = (): void => {
+      const t = Math.min(1, (performance.now() - start) / dur);
+      // easeOutCubic — settles smoothly into the final lensing.
+      const e = 1 - Math.pow(1 - t, 3);
+      this.glass!.flexRefraction(from + (to - from) * e);
+      if (t < 1) {
+        this.lensRaf = requestAnimationFrame(step);
+      } else {
+        this.lensRaf = 0;
+        if (opening) this.glass!.flexRefraction(null); // restore configured value
+      }
+    };
+    this.lensRaf = requestAnimationFrame(step);
   }
 
   private hideAfterClose(): void {
