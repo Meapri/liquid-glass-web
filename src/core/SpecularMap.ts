@@ -62,7 +62,7 @@ export function generateSpecularMap(params: SpecularMapParams): string {
     return Math.min(halfW - adx, halfH - ady);
   }
 
-  const globalStrength = maxDepth * 0.65;
+  const globalStrength = maxDepth * 0.8;
 
   // Hybrid Height Field: Official Apple Quartic Root Bevel + Hacky Bivariate Paraboloid Dome
   function getH(px: number, py: number, inside: number): number {

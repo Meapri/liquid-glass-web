@@ -79,7 +79,8 @@ export function generateDisplacementMap(
   }
 
   // Global Magnification Constants
-  const globalStrength = maxDepth * 0.65; // Increased from 0.15 for strong interior refraction
+  // Adjusted to 0.8 for the perfect balance of central lens refraction
+  const globalStrength = maxDepth * 0.8;
 
   // Hybrid Height Field: Official Apple Quartic Root Bevel + Hacky Bivariate Paraboloid Dome
   function getH(px: number, py: number, inside: number): number {
