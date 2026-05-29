@@ -82,9 +82,9 @@ export function generateSpecularMap(params: SpecularMapParams): string {
 
   const lightDirX = -0.7071; // Top-Left
   const lightDirY = -0.7071;
+  const strengthMult = intensity;
 
   for (let y = 0; y < h; y++) {
-    const isYMiddle = y > bevelWidth && y < h - bevelWidth;
     const py = y + 0.5;
     
     // Sliding Window: initial right point
@@ -113,7 +113,6 @@ export function generateSpecularMap(params: SpecularMapParams): string {
       const nLen = Math.sqrt(dHdx * dHdx + dHdy * dHdy + 1.0);
       const Nx = -dHdx / nLen;
       const Ny = -dHdy / nLen;
-        const Nz = 1.0 / nLen;
 
 
       const dot = Nx * lightDirX + Ny * lightDirY;
