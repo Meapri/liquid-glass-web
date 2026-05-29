@@ -45,7 +45,10 @@ export function generateSpecularMap(params: SpecularMapParams): string {
   const innerH = Math.max(0, halfH - r);
 
   const maxDepth = Math.min(halfW, halfH);
-  const bevelWidth = Math.min(maxDepth, Math.max(2, params.thickness * dpr));
+  
+  // CRITICAL: See DisplacementMap.ts. Clamp bevelWidth to guarantee C1 continuity.
+  const maxBevel = Math.max(2, r * 0.95);
+  const bevelWidth = Math.min(maxBevel, Math.max(2, params.thickness * dpr));
   const globalStrength = maxDepth * 0.15; // Very subtle dome
 
   // ─── Formula Constants ───
@@ -53,10 +56,23 @@ export function generateSpecularMap(params: SpecularMapParams): string {
   const lightDirY = -0.7071;
   const strengthMult = intensity;
 
-  function getOuterDist(px: number, py: number): number {
-    const qx = Math.max(0, Math.abs(px - cx) - innerW);
-    const qy = Math.max(0, Math.abs(py - cy) - innerH);
-    return Math.sqrt(qx * qx + qy * qy);
+  // Exact distance from the boundary (positive inside)
+  function getSdf(px: number, py: number): number {
+    const adx = Math.abs(px - cx);
+    const ady = Math.abs(py - cy);
+    const distX = halfW - adx;
+    const distY = halfH - ady;
+    if (distX <= 0 || distY <= 0) return 0;
+
+    const qx = adx - innerW;
+    const qy = ady - innerH;
+
+    if (qx > 0 && qy > 0) {
+      const distToCorner = Math.sqrt(qx * qx + qy * qy);
+      if (distToCorner > r) return 0;
+      return r - distToCorner;
+    }
+    return Math.min(distX, distY);
   }
 
   function smootherstep(edge0: number, edge1: number, x: number): number {
@@ -65,10 +81,10 @@ export function generateSpecularMap(params: SpecularMapParams): string {
   }
 
   function getHeight(px: number, py: number): number {
-    const distToBoundary = r - getOuterDist(px, py);
-    if (distToBoundary <= 0) return 0;
+    const d = getSdf(px, py);
+    if (d <= 0) return 0;
 
-    const t = Math.max(0, Math.min(1, distToBoundary / bevelWidth));
+    const t = Math.max(0, Math.min(1, d / bevelWidth));
     const hBevel = bevelWidth * smootherstep(0, 1.0, t);
 
     const dxC = px - cx;
@@ -88,8 +104,8 @@ export function generateSpecularMap(params: SpecularMapParams): string {
       const px = x + 0.5;
       const idx = (y * w + x) * 4;
 
-      const distToBoundary = r - getOuterDist(px, py);
-      if (distToBoundary <= 0) continue;
+      const d = getSdf(px, py);
+      if (d <= 0) continue;
 
       // Compute flawless normal via finite differences
       const eps = 0.5;

@@ -66,35 +66,46 @@ export function generateDisplacementMap(
   const innerH = Math.max(0, halfH - r);
 
   const maxDepth = Math.min(halfW, halfH);
-  const bevelWidth = Math.min(maxDepth, Math.max(2, params.thickness * dpr));
+  
+  // CRITICAL: The exact SDF is mathematically C1-continuous ONLY within a distance 'r' 
+  // from the boundary (the tubular neighborhood theorem). By clamping bevelWidth < r, 
+  // we guarantee that the bevel flattens out before hitting the medial axis, ensuring ZERO creases.
+  const maxBevel = Math.max(2, r * 0.95);
+  const bevelWidth = Math.min(maxBevel, Math.max(2, params.thickness * dpr));
 
-  // ─── Formula Constants ───
   const globalStrength = maxDepth * 0.15; // Very subtle dome
 
-  // Helper: Distance to the inner rectangle boundary (C1 continuous outside).
-  // Inside the inner rectangle, this is exactly 0.
-  function getOuterDist(px: number, py: number): number {
-    const qx = Math.max(0, Math.abs(px - cx) - innerW);
-    const qy = Math.max(0, Math.abs(py - cy) - innerH);
-    return Math.sqrt(qx * qx + qy * qy);
+  // Exact distance from the boundary (positive inside)
+  function getSdf(px: number, py: number): number {
+    const adx = Math.abs(px - cx);
+    const ady = Math.abs(py - cy);
+    const distX = halfW - adx;
+    const distY = halfH - ady;
+    if (distX <= 0 || distY <= 0) return 0;
+
+    const qx = adx - innerW;
+    const qy = ady - innerH;
+
+    if (qx > 0 && qy > 0) {
+      const distToCorner = Math.sqrt(qx * qx + qy * qy);
+      if (distToCorner > r) return 0;
+      return r - distToCorner;
+    }
+    return Math.min(distX, distY);
   }
 
-  // Helper: C2 Continuous Smootherstep
   function smootherstep(edge0: number, edge1: number, x: number): number {
     const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
     return t * t * t * (t * (t * 6 - 15) + 10);
   }
 
-  // Pure mathematical C1-continuous smooth height field. No diagonal creases!
   function getHeight(px: number, py: number): number {
-    const distToBoundary = r - getOuterDist(px, py);
-    if (distToBoundary <= 0) return 0; // Outside
+    const d = getSdf(px, py);
+    if (d <= 0) return 0;
 
-    // Smooth bevel
-    const t = Math.max(0, Math.min(1, distToBoundary / bevelWidth));
+    const t = Math.max(0, Math.min(1, d / bevelWidth));
     const hBevel = bevelWidth * smootherstep(0, 1.0, t);
 
-    // Subtle center dome to give very slight glass volume inside the bevel
     const dxC = px - cx;
     const dyC = py - cy;
     const u = dxC / halfW;
@@ -113,8 +124,8 @@ export function generateDisplacementMap(
       const px = x + 0.5;
       const i = rowBase + x * 4;
 
-      const distToBoundary = r - getOuterDist(px, py);
-      if (distToBoundary <= 0) {
+      const d = getSdf(px, py);
+      if (d <= 0) {
         data[i] = 128; data[i + 1] = 128; data[i + 2] = 128; data[i + 3] = 255;
         continue;
       }
@@ -148,8 +159,6 @@ export function generateDisplacementMap(
         const rx = eta * ex - (eta * dot + Math.sqrt(k)) * nx;
         const ry = eta * ey - (eta * dot + Math.sqrt(k)) * ny;
 
-        // Directly encode the refracted ray's lateral shift into the displacement map.
-        // Multiply by an amplitude to make sure it covers enough normalized range [-1, 1].
         const amp = 1.5;
         finalX = rx * amp;
         finalY = ry * amp;
