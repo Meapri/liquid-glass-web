@@ -85,6 +85,26 @@ defining its silhouette."* The engine reproduces both from one shared surface:
   cursor and **fades in by proximity** (lights up as the cursor approaches from a
   distance, ~220px, not only on direct hover) — Apple's *"light travels around
   the material … comes to life on touch."*
+- **Interaction illumination** — on press the glow blooms from under the finger
+  and *"spreads throughout the element and onto any Liquid Glass elements
+  nearby"*: `PointerField` broadcasts the press so neighbouring glass also lights
+  (strongest on the pressed element, falling off with distance).
 - You do not need to add your own CSS inner shadows or borders. The engine
   handles the edge lensing and lighting; keep the surrounding content rich so the
   lens has something to bend.
+
+## 6. Morph transitions (`LiquidMenu`, `LiquidSheet`)
+
+Apple flexes and morphs glass between sizes: *"presenting a menu from a toolbar
+button … as glass morphs to larger sizes it casts deeper, richer shadows, has
+more pronounced lensing and refraction."*
+
+- **`LiquidMenu(trigger, menu)`** — the menu flows out of its trigger (springs up
+  from a small seed anchored to the control) and collapses back on dismiss.
+- **`LiquidSheet(sheet)`** — materializes a sheet up from the bottom over a
+  dimming scrim (the scrim is the "dimming layer" that keeps content legible),
+  and slides back down on dismiss.
+
+Both honor `prefers-reduced-motion` (no elastic morph) and close on outside
+click / Escape. Give the menu/sheet element a `.liquid-glass` + its own
+`LiquidGlass` instance, then attach the component.

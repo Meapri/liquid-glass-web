@@ -4,14 +4,12 @@
  * interaction by instantly flexing and energizing with light … it comes to life
  * on touch" (Meet Liquid Glass, WWDC25).
  *
- * This drives two things via CSS custom properties / classes:
- *   - 3D parallax tilt from the hover position (`--lg-tilt-x/y`).
- *   - Interaction illumination: on press it marks the press point
- *     (`--lg-press-x/y`) and adds `.lg-pressing`, so the CSS glow blooms out
- *     from under the finger. The jelly "flex" squish is pure CSS (:active).
+ * This drives the 3D parallax tilt from the hover position (`--lg-tilt-x/y`).
+ * The jelly "flex" squish is pure CSS (:active).
  *
- * The pointer-tracked EDGE light and proximity glow are owned by the core
- * `PointerField`; this class only adds the per-element tilt + press feedback.
+ * The pointer-tracked EDGE light, proximity glow AND the press interaction
+ * illumination (which spreads onto nearby glass) are owned by the core
+ * `PointerField`; this class only adds the per-element tilt.
  * Honors `prefers-reduced-motion` by dropping the elastic tilt.
  */
 export class LiquidInteractive {
@@ -47,27 +45,10 @@ export class LiquidInteractive {
     element.addEventListener('pointerenter', this.onEnter);
     element.addEventListener('pointermove', this.onMove);
     element.addEventListener('pointerleave', this.onLeave);
-    element.addEventListener('pointerdown', this.onDown);
-    element.addEventListener('pointerup', this.onUp);
-    element.addEventListener('pointercancel', this.onUp);
 
     element.style.setProperty('--lg-tilt-x', '0deg');
     element.style.setProperty('--lg-tilt-y', '0deg');
   }
-
-  // ── Press: interaction illumination ──────────────────────────────────────
-  private onDown = (e: PointerEvent): void => {
-    const rect = this.element.getBoundingClientRect();
-    const px = (e.clientX - rect.left) / rect.width;
-    const py = (e.clientY - rect.top) / rect.height;
-    this.element.style.setProperty('--lg-press-x', clamp01(px).toFixed(4));
-    this.element.style.setProperty('--lg-press-y', clamp01(py).toFixed(4));
-    this.element.classList.add('lg-pressing');
-  };
-
-  private onUp = (): void => {
-    this.element.classList.remove('lg-pressing');
-  };
 
   // ── Hover: 3D parallax tilt ──────────────────────────────────────────────
   private onEnter = (): void => {
@@ -79,8 +60,6 @@ export class LiquidInteractive {
     this.isHovered = false;
     this.targetX = 0.5;
     this.targetY = 0.5;
-    // A press that drags off the element still releases.
-    this.element.classList.remove('lg-pressing');
   };
 
   private onMove = (e: PointerEvent): void => {
@@ -116,14 +95,6 @@ export class LiquidInteractive {
     this.element.removeEventListener('pointerenter', this.onEnter);
     this.element.removeEventListener('pointermove', this.onMove);
     this.element.removeEventListener('pointerleave', this.onLeave);
-    this.element.removeEventListener('pointerdown', this.onDown);
-    this.element.removeEventListener('pointerup', this.onUp);
-    this.element.removeEventListener('pointercancel', this.onUp);
-    this.element.classList.remove('lg-pressing');
     if (this.rafId !== null) cancelAnimationFrame(this.rafId);
   }
-}
-
-function clamp01(n: number): number {
-  return n < 0 ? 0 : n > 1 ? 1 : n;
 }

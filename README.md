@@ -50,13 +50,20 @@ is composited by the browser GPU pipeline.
   `.liquid-glass::after` paints a crisp bright segment of the rim that follows
   the cursor and **fades in by distance** (it lights up from ~220px away, not
   only on direct hover), masked to a 1.5px border so only the edge lights up.
-- **Motion, designed as one with the look** — `.lg-interactive` adds Apple's
-  official motion: **interaction illumination** (on press the glow blooms from
-  under the finger and spreads through the element), a **gel-like flex** squish,
-  3D parallax tilt, lift-on-touch, and **materialize in/out**
-  (`.lg-materialize` / `.lg-dematerialize`) that springs the scale/lensing
-  rather than fading. Honors `prefers-reduced-motion` (drops the elastic motion,
-  keeps the light).
+- **Motion, designed as one with the look** — Apple's official motion:
+  **interaction illumination** — on press the glow blooms from under the finger,
+  *"spreads throughout the element and onto any Liquid Glass elements nearby"*
+  (the core `PointerField` broadcasts the press, so neighbouring glass lights up
+  too); a **gel-like flex** squish, 3D parallax tilt and lift-on-touch
+  (`.lg-interactive`); and **materialize in/out** (`.lg-materialize` /
+  `.lg-dematerialize`) that springs the scale/lensing rather than fading. Honors
+  `prefers-reduced-motion` (drops the elastic motion, keeps the light).
+- **Morph transitions** — `LiquidMenu` summons a menu that flexes and **flows out
+  of its trigger** (thicker glass as it grows — deeper shadow + more lensing),
+  and `LiquidSheet` **materializes a sheet up from the bottom** over a dimming
+  scrim. Both collapse back on dismiss and honor reduced motion. *"Presenting a
+  menu from a toolbar button … as glass morphs to larger sizes it casts deeper,
+  richer shadows, has more pronounced lensing and refraction."*
 - **Tasteful depth** — a soft, diffuse cool float shadow and a gentle inner top
   sheen give the glass volume (a lozenge floating above content), without the
   hard embossed look of a raised button.

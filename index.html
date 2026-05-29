@@ -201,11 +201,27 @@
 
           <!-- Interaction illumination -->
           <div class="anim-card">
-            <div class="anim-label">Interaction illumination — press &amp; hold; light blooms from your finger</div>
+            <div class="anim-label">Interaction illumination — press &amp; hold; light blooms from your finger and onto nearby glass</div>
             <div class="press-target liquid-glass lg-interactive" id="anim-press" data-glass='{"radius":24,"thickness":44,"refraction":52,"variant":"regular"}'>
               Press &amp; hold
             </div>
           </div>
+
+          <!-- Sheet morph -->
+          <div class="anim-card">
+            <div class="anim-label">Sheet — materializes up from the bottom over a dimming scrim</div>
+            <button class="btn liquid-glass lg-interactive" id="anim-sheet-trigger" data-glass='{"radius":"pill","thickness":44,"refraction":50,"variant":"regular"}'>
+              Open sheet
+            </button>
+          </div>
+        </div>
+
+        <!-- The sheet itself (fixed-positioned, hidden until presented) -->
+        <div class="anim-sheet liquid-glass" id="anim-sheet" data-glass='{"radius":34,"thickness":48,"refraction":60,"variant":"regular"}'>
+          <div class="anim-sheet-handle"></div>
+          <h3>Liquid sheet</h3>
+          <p>Rises from below and grows — thicker glass at full size, with a dimming scrim behind for legibility.</p>
+          <button class="btn btn-sm liquid-glass lg-interactive" id="anim-sheet-close" data-glass='{"radius":"pill","thickness":40,"refraction":44,"variant":"tinted"}'>Done</button>
         </div>
       </section>
 
