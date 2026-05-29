@@ -76,8 +76,8 @@ const EDGE_SHADOW_DARK =
 
 const DEFAULT_OPTIONS: ResolvedOptions = {
   radius: 24,
-  thickness: 26,
-  refraction: 30,
+  thickness: 58,
+  refraction: 95,
   chromaticAberration: 0.22,
   blur: 12,
   saturation: 145,
@@ -216,7 +216,7 @@ export class LiquidGlass {
 
     if (this.filter) {
       this.filter.updateBlur(this.options.blur);
-      this.filter.updateRefraction(this.options.refraction);
+      this.filter.updateRefraction(this.effectiveRefraction());
       this.filter.updateSaturation(this.options.saturation);
     }
 
@@ -331,6 +331,17 @@ export class LiquidGlass {
   }
 
   /**
+   * Refraction is an inward displacement in px, so on a small element a large
+   * value would oversample past the centre and break up. Cap it to a fraction of
+   * the short side — the glass is physically "thinner" when it's small — so the
+   * strong default reads on panels/tiles but stays coherent on small controls.
+   */
+  private effectiveRefraction(): number {
+    const cap = Math.min(this.currentWidth, this.currentHeight) * 0.65;
+    return Math.min(this.options.refraction, cap);
+  }
+
+  /**
    * The displacement map is a smooth gradient that feImage bilinear-upscales to
    * the element box, so below the 'high' tier it renders at 1× — halving its
    * canvas area (and its PNG-encode cost) versus the specular map with no
@@ -376,7 +387,7 @@ export class LiquidGlass {
       : null;
 
     this.filter = new FilterChain({
-      refraction: this.options.refraction,
+      refraction: this.effectiveRefraction(),
       chromaticAberration: this.effectiveChromatic(),
       blur: this.options.blur,
       saturation: this.options.saturation,

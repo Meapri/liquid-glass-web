@@ -56,8 +56,8 @@ new LiquidGlass(document.querySelector('.tab-bar')!, {
 | option | default | meaning |
 | --- | --- | --- |
 | `radius` | `'auto'` | px, `'pill'`, or `'auto'` (reads computed border-radius) |
-| `thickness` | `18` | specular rim band width in px (the lens itself spans the whole surface) |
-| `refraction` | `30` | max inward displacement at the rim, in px — the overall refraction strength |
+| `thickness` | `58` | width of the refraction **bevel band** at the rim, in px (auto-capped to 28% of the short side; also the specular rim band) |
+| `refraction` | `95` | max inward displacement at the rim, in px — overall refraction strength (auto-capped to 65% of the short side so small controls stay coherent) |
 | `chromaticAberration` | `0.22` | 0–1; subtle RGB fringing at the rim (kept low so the body stays clean) |
 | `blur` | per-variant | backdrop frost stdDeviation, applied before refraction; default by variant (`regular` 4, `clear` 2, `tinted` 6) |
 | `saturation` | `145` | % saturation applied after displacement (Apple keeps the backdrop close to neutral, not over-vivid) |

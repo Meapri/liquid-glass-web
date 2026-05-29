@@ -50,7 +50,11 @@ export function generateDisplacementMap(
   const w = Math.max(1, Math.round(params.width * dpr));
   const h = Math.max(1, Math.round(params.height * dpr));
   const r = Math.max(0, Math.min(Math.min(w, h) / 2, params.radius * dpr));
-  const paddingCss = Math.max(8, Math.ceil(params.refraction));
+  // The lens refracts INWARD (toward centre), so rim pixels sample from inside
+  // the box — no large outward halo is needed. A small fixed pad (independent of
+  // `refraction`) just guards the very edge, keeping the canvas small and
+  // generation fast even at strong refraction.
+  const paddingCss = Math.max(8, Math.min(Math.ceil(params.refraction), 16));
   const pad = Math.ceil(paddingCss * dpr);
 
   const totalW = w + pad * 2;
