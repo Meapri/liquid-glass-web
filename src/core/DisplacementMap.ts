@@ -175,8 +175,15 @@ export function generateDisplacementMap(
       const hackyY = normalY * directAmp;
 
       // 3. Interpolation
-      const finalX = edgeFactor * (snell.rx * 1.6) + (1.0 - edgeFactor) * hackyX;
-      const finalY = edgeFactor * (snell.ry * 1.6) + (1.0 - edgeFactor) * hackyY;
+      const rawX = edgeFactor * (snell.rx * 1.6) + (1.0 - edgeFactor) * hackyX;
+      const rawY = edgeFactor * (snell.ry * 1.6) + (1.0 - edgeFactor) * hackyY;
+
+      // 4. Physical Thickness Compensation
+      // The physical refraction displacement is proportional to the actual thickness of the glass (hNorm).
+      // This guarantees that displacement naturally fades to 0.0 at the outer boundaries, preventing pixel clipping.
+      const hNorm = hL / (bevelWidth + globalStrength); // hL is high-fidelity height at this pixel
+      const finalX = rawX * hNorm;
+      const finalY = rawY * hNorm;
 
       // Encode displacement into RGBA (128 = neutral, ±127 = max offset)
       data[i]     = Math.max(1, Math.min(255, Math.round(128 + finalX * 127)));
