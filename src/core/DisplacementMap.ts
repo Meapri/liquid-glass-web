@@ -79,20 +79,26 @@ export function generateDisplacementMap(
   }
 
   // Global Magnification Constants
-  // Adjusted to 0.8 for the perfect balance of central lens refraction
-  const globalStrength = maxDepth * 0.8;
+  // Adjusted to 0.6 as requested
+  const globalStrength = maxDepth * 0.6;
 
   // Hybrid Height Field: Official Apple Quartic Root Bevel + Hacky Bivariate Paraboloid Dome
   function getH(px: number, py: number, inside: number): number {
     if (inside <= 0) return 0;
     
     let h = 0;
+    let edgeFade = 1.0;
+    
     // 1. Anti-aliased Apple Bevel (Quartic Polynomial: y = 1 - (1 - t)⁴)
     // Finite slope at the edge completely removes jaggies while keeping the steep refraction
     if (inside < bevelWidth) {
-      const invT = 1.0 - (inside / bevelWidth);
+      const t = inside / bevelWidth;
+      const invT = 1.0 - t;
       const invT4 = invT * invT * invT * invT;
       h += bevelWidth * (1.0 - invT4);
+      
+      // Smoothstep fade for the dome to perfectly zero out at the border, preventing corner cliffs/jaggies
+      edgeFade = t * t * (3.0 - 2.0 * t);
     } else {
       h += bevelWidth;
     }
@@ -102,7 +108,7 @@ export function generateDisplacementMap(
     const v = (py - cy) / halfH;
     const dome = (1.0 - u * u) * (1.0 - v * v);
     
-    h += globalStrength * dome;
+    h += globalStrength * dome * edgeFade;
     
     return h;
   }

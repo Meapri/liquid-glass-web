@@ -79,7 +79,7 @@ const DEFAULT_OPTIONS: ResolvedOptions = {
   thickness: 48,
   refraction: 80, // High refraction for strong Apple spatial effect
   chromaticAberration: 0.03,
-  blur: 6, // Higher blur for silky smooth diffusion
+  blur: 8, // Higher blur for silky smooth diffusion
   saturation: 180, // High saturation for vibrant colors
   variant: 'regular',
   scheme: 'auto',
