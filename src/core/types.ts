@@ -76,6 +76,18 @@ export interface LiquidGlassOptions {
    * to manage box-shadow yourself. Default: true.
    */
   edges?: boolean;
+  /**
+   * Opt-in real lensing for the non-Chromium fallback (Safari/Firefox). Those
+   * engines can't run an SVG filter inside `backdrop-filter`, so the arbitrary
+   * backdrop can't be refracted. But if you tell the engine what's behind the
+   * glass — a CSS background value identical to the page's FIXED background
+   * (image or gradient) — it places a copy of that background inside the glass
+   * and displaces *that* with a regular SVG `filter` (which Safari supports),
+   * giving true refraction for that backdrop. Use `background-attachment: fixed`
+   * style values; ignored on Chromium (the real backdrop is already refracted).
+   * Example: `refractBackground: 'url(/hero.jpg) center/cover fixed'`.
+   */
+  refractBackground?: string;
   /** Apply the computed radius as the element's border-radius. Default: true. */
   applyRadius?: boolean;
   /** Device-pixel-ratio cap for the displacement map (1–3). Default: 2. */
@@ -141,6 +153,7 @@ export interface ResolvedOptions {
   specular: boolean;
   specularIntensity: number;
   edges: boolean;
+  refractBackground: string | null;
   applyRadius: boolean;
   mapPixelRatio: number;
   quality: LiquidGlassQuality;
