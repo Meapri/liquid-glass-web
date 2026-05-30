@@ -120,6 +120,26 @@ if (ctxTrigger && ctxEl) {
   }
 }
 
+// Adaptive — smooth auto transition. The stage backdrop crossfades dark↔light
+// on a timer; the glass re-samples across the fade (syncToBackdrop) so its
+// appearance glides to match — light glass + dark label over light content,
+// dark glass + light label over dark content.
+const adaptStage = document.getElementById('adapt-stage');
+const adaptPill = document.getElementById('adapt-auto');
+if (adaptStage && adaptPill) {
+  const adaptGlass = instances.get(adaptPill);
+  const resample = (): void => adaptGlass?.syncToBackdrop();
+  let light = false;
+  const toggle = (): void => {
+    light = !light;
+    adaptStage.classList.toggle('is-light', light);
+    // Sample several times across the backdrop's own fade so the glass tracks
+    // the brightness crossing rather than snapping at the end.
+    for (const t of [140, 300, 460, 620, 780]) window.setTimeout(resample, t);
+  };
+  window.setInterval(toggle, 2800);
+}
+
 // Tab bar — a tinted glass selection capsule glides to the active tab.
 const tabbar = document.getElementById('lg-tabbar');
 if (tabbar) {

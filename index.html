@@ -223,7 +223,7 @@
             </button>
           </div>
 
-          <!-- Adaptive appearance -->
+          <!-- Adaptive appearance — static reference (light vs dark backdrop) -->
           <div class="anim-card">
             <div class="anim-label">Adaptive — auto light/dark to match the content behind</div>
             <div class="adapt-row">
@@ -233,6 +233,14 @@
               <div class="adapt-swatch adapt-light">
                 <div class="adapt-pill liquid-glass" data-glass='{"radius":"pill","preset":"auto","scheme":"adaptive"}'>Glass</div>
               </div>
+            </div>
+          </div>
+
+          <!-- Adaptive appearance — smooth auto transition as the backdrop changes -->
+          <div class="anim-card">
+            <div class="anim-label">Adaptive — smooth crossfade as the content behind changes</div>
+            <div class="adapt-stage" id="adapt-stage">
+              <div class="adapt-pill liquid-glass" id="adapt-auto" data-glass='{"radius":"pill","preset":"auto","scheme":"adaptive"}'>Aa Glass</div>
             </div>
           </div>
         </div>

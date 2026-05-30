@@ -85,9 +85,21 @@
   text-shadow: 0 1px 1px rgba(0, 0, 0, 0.42);
 }
 
-/* Adaptive (scheme:'adaptive') flips the label to stay legible against the
-   resolved appearance — dark text on a light glass over light content. The
-   dark-appearance case already keeps the default white label. */
+/* Adaptive (scheme:'adaptive') crossfades the whole appearance — tint, label
+   color, and float shadow — as the backdrop brightness crosses the threshold,
+   so the light/dark switch glides instead of snapping. */
+.liquid-glass[data-adaptive] {
+  transition:
+    transform 200ms ease,
+    box-shadow 460ms ease,
+    background-color 460ms ease,
+    color 460ms ease,
+    text-shadow 460ms ease;
+}
+
+/* Adaptive flips the label to stay legible against the resolved appearance —
+   dark text on a light glass over light content. The dark-appearance case
+   already keeps the default white label. */
 .liquid-glass[data-adaptive][data-scheme='light'] {
   color: #1c1c22;
   text-shadow: 0 1px 1px rgba(255, 255, 255, 0.45);

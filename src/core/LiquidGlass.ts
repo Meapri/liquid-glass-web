@@ -414,6 +414,18 @@ export class LiquidGlass {
   }
 
   /**
+   * Re-read the backdrop and re-resolve the content-aware shadow and, for
+   * `scheme: 'adaptive'`, the light/dark appearance. The engine already does
+   * this on layout and on scroll; call it manually when the content *behind* a
+   * stationary adaptive element changes (a theme swap, a background image load,
+   * a recolored hero) and you want the glass to glide to the new appearance.
+   * No-op for the SVG-less fallback path.
+   */
+  syncToBackdrop(): void {
+    this.adaptToBackdrop();
+  }
+
+  /**
    * Live-override the lensing (displacement) strength in px WITHOUT rebuilding
    * the maps — a cheap per-frame GPU attribute change for morph / materialize
    * animations (e.g. `LiquidMenu` ramping the refraction as the menu grows).
