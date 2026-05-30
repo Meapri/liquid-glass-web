@@ -54,12 +54,12 @@ window.addEventListener('resize', () => {
 // tilt / press behaviour to every .lg-interactive). `registry.instances` is the
 // element→LiquidGlass map the morph helpers below reach into.
 //
-// `backdropSource: '#lg-scene'` routes every box through the shared WebGL
-// refractor — ONE full-viewport canvas, one render pass per frame — so the
-// lensing is IDENTICAL on Chrome, Safari and Firefox (same shader + scene), and
-// scrolling only updates uniforms (smooth, no per-box DOM work). The adaptive
-// pills (over their own swatches) override it to null.
-const registry = autoEnhance({ defaults: { backdropSource: '#lg-scene' } });
+// Chromium refracts natively (compositor-synced → smooth). On iOS Safari any
+// JS/WebGL refraction of a FIXED backdrop lags during scroll (async scrolling +
+// no compositor backdrop access), so we deliberately use the smooth CSS frost
+// there instead of a stuttering lens. The WebGL refractor stays an opt-in
+// (`backdropSource`) for non-scrolling / controlled panels — see Browser support.
+const registry = autoEnhance();
 const instances = registry.instances;
 
 // === Live playground ===
