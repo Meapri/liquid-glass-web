@@ -54,13 +54,12 @@ window.addEventListener('resize', () => {
 // tilt / press behaviour to every .lg-interactive). `registry.instances` is the
 // element→LiquidGlass map the morph helpers below reach into.
 //
-// `backdropSource: '#lg-scene'` points every box at the plain gradient scene
-// element, so refraction works cross-browser: on Chromium this is a no-op (its
-// native backdrop-filter already refracts the real backdrop), while on
-// Safari/Firefox each box refracts a clone / -moz-element of that scene. The
-// scene is filter-free so it renders reliably when cloned. Per-element configs
-// (the adaptive pills, the cross-browser/Safari demo pills) override it.
-const registry = autoEnhance({ defaults: { backdropSource: '#lg-scene' } });
+// On Chromium every box refracts natively (backdrop-filter). On Safari/Firefox
+// boxes use the smooth CSS frost + specular fallback — we deliberately DON'T put
+// real GPU refraction on all ~30 boxes at once (per-scroll GPU work on every box
+// is what made Safari stutter). The WebGL refractor stays an opt-in for a few
+// controlled panels via `backdropSource` (see the Browser support docs).
+const registry = autoEnhance();
 const instances = registry.instances;
 
 // === Live playground ===
