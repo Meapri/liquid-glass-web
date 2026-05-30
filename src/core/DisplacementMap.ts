@@ -36,7 +36,7 @@ export interface DisplacementMapResult {
 const GLASS_IOR = 1.5;
 /** Lens depth at the reference thickness, as a fraction of the half short-side.
  * Larger ⇒ a deeper, more dimensional lens (thicker-glass volume). */
-const LENS_DEPTH_BASE = 1.55;
+const LENS_DEPTH_BASE = 1.95;
 /** `thickness` (CSS px) that maps to the base depth; others scale linearly. */
 const THICKNESS_REF = 30;
 /**

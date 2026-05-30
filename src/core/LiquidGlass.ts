@@ -60,9 +60,9 @@ const VARIANT_TINT: Record<LiquidGlassVariant, { light: string; dark: string }> 
  * as a compatibility alias for regular+tint. Explicit `blur` always wins.
  */
 const VARIANT_BLUR: Record<LiquidGlassVariant, number> = {
-  regular: 7, // light frost — clearer so the refraction/lensing reads like real glass
-  clear: 3,    // near-transparent for bold media
-  tinted: 14,
+  regular: 4.5, // light frost — kept low so the backdrop keeps structure to bend
+  clear: 2.5,   // near-transparent for bold media
+  tinted: 11,
 };
 
 // The glass edge treatment is built per-instance in applyEdges() — a faint
