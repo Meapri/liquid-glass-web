@@ -467,38 +467,38 @@ the real page background. Ignored on Chromium (the real backdrop is already
 refracted). You can preview this path on any browser by forcing the fallback
 with `quality: 'low'` (see the "Safari path" card in the demo).
 
-**Chromium-level refraction in all three engines — `backdropSource`.** The one
-technique that works everywhere is *"put a copy of what's behind the glass
-inside it and displace that copy with a regular SVG `filter:`"* (the only SVG
-filter form Safari and Firefox support). Point the glass at a discrete **scene**
-element it floats over — a map, photo, video, or gradient panel — and the engine
-refracts that scene with the *same displacement map* per engine, so the result
-matches Chromium:
+**The hard limit — scrolling refraction can't match Chrome off-Chromium.**
+Chrome refracts the backdrop *in the compositor*, synchronized with scrolling,
+so it never lags. Other engines don't expose the composited backdrop to JS, and
+**iOS Safari scrolls on a separate thread** — so any JS/WebGL refraction of a
+*fixed* backdrop is redrawn a frame late and visibly **stutters during scroll**.
+This is structural, not a tuning issue: the only thing that scrolls smoothly on
+iOS Safari is CSS `backdrop-filter` (frost), which can't do lensing. So the
+honest default off-Chromium is the **smooth CSS frost** (what the demo uses) — a
+stuttering lens is worse than clean frost.
+
+**`backdropSource` (opt-in) — Chrome-quality lensing for NON-scrolling panels.**
+Where the glass and its scene don't scroll relative to each other (a fixed hero
+panel, a modal over a still background, a non-scrolling app shell), the shared
+**WebGL** refractor gives real GPU lensing on Safari/Firefox too — the same
+displacement map Chrome bakes, uploaded as a texture, plus chromatic aberration,
+frost and specular, in one full-viewport canvas / one pass:
 
 ```ts
-new LiquidGlass(glassEl, { backdropSource: '#scene' }); // or an HTMLElement
+new LiquidGlass(glassEl, { backdropSource: '#scene' }); // a <canvas>/<img>/<video>
 ```
 
-- **Chromium** → its native `backdrop-filter` path (the option is ignored — the
-  real backdrop is already refracted, live, for free).
-- **Firefox** → `-moz-element(#scene)` paints the **live** scene as the lens
-  source; a regular `filter:` then displaces it. Live, no clone.
-- **Safari / others** → a single shared **WebGL** canvas refracts the scene for
-  every box on the GPU (a fragment shader samples the scene texture with the same
-  displacement map, plus chromatic aberration, frost and specular). Scrolling
-  only updates per-box uniforms — no DOM clones, no per-frame layout — so it
-  stays smooth. This needs the scene to be a **`<canvas>`/`<img>`/`<video>`**
-  (those upload to a GPU texture taint-free; a DOM element would taint it). If
-  WebGL2 or an uploadable scene isn't available it falls back to a position-
-  synced DOM clone (`inert` + `aria-hidden`, ids stripped).
+- **Chromium** → native `backdrop-filter` (the option is ignored — refracts the
+  real live backdrop for free).
+- **Safari / Firefox** → the WebGL canvas refracts the scene texture. The scene
+  must be a **`<canvas>`/`<img>`/`<video>`** (uploads to a GPU texture taint-free;
+  a DOM element would taint it). Falls back to a position-synced DOM clone /
+  `-moz-element` if WebGL2 isn't available.
 
 Constraints: the scene must be a *separate* element (not the glass or an
-ancestor — that would recurse / paint-loop). The clone is a static copy, so
-video/`<canvas>`/form state in the scene aren't live in the Safari path (Firefox
-stays live via `-moz-element`); best for discrete, mostly-static scenes. Unlike
-`refractBackground` (a fixed CSS background), this refracts real, arbitrary
-scene content. Preview on any browser via `quality: 'low'` (the "Cross-browser"
-card in the demo forces the clone path).
+ancestor). Best for **discrete, non-scrolling** surfaces — over scrolling
+content it will lag on iOS Safari (see above). Preview on any browser by forcing
+the path with `quality: 'low'`.
 
 **Reduced transparency.** `prefers-reduced-transparency: reduce` takes the
 calmest path: a plain profile-aware frost with none of the above enhancements
