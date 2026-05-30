@@ -65,23 +65,9 @@ const VARIANT_BLUR: Record<LiquidGlassVariant, number> = {
   tinted: 14,
 };
 
-/**
- * The glass edge treatment, layered as one box-shadow — tuned for tasteful
- * DEPTH (a glass lozenge floating above the content), not a hard embossed
- * button: a faint hairline, a gentle inner top sheen that gives the body volume,
- * and a soft, diffuse cool float shadow that lifts it off the page.
- */
-const EDGE_SHADOW_LIGHT =
-  'inset 0 0 0 0.5px rgba(255, 255, 255, 0.16), ' + // faint hairline — dynamic light is the primary edge
-  'inset 0 2px 4px rgba(255, 255, 255, 0.32), ' + // subtle top sheen (volume)
-  'inset 0 -3px 6px rgba(0, 0, 0, 0.06), ' + // subtle bottom inner shade
-  '0 4px 12px rgba(31, 38, 135, 0.09)'; // very light float shadow
-
-const EDGE_SHADOW_DARK =
-  'inset 0 0 0 0.5px rgba(255, 255, 255, 0.09), ' +
-  'inset 0 2px 4px rgba(255, 255, 255, 0.16), ' +
-  'inset 0 -3px 6px rgba(0, 0, 0, 0.18), ' +
-  '0 5px 14px rgba(0, 0, 0, 0.24)';
+// The glass edge treatment is built per-instance in applyEdges() — a faint
+// hairline + top sheen (volume) + a profile-scaled float shadow (larger glass
+// casts deeper, richer shadows).
 
 const DEFAULT_OPTIONS: ResolvedOptions = {
   radius: 22, // Apple's standard corner radius
@@ -129,6 +115,11 @@ interface OpticalTuning {
   /** Scales the baked geometry highlight. */
   specular: number;
   /**
+   * Scales the float shadow depth. Apple: glass at larger sizes "casts deeper,
+   * richer shadows" — so panels cast more, small controls less.
+   */
+  shadow: number;
+  /**
    * Size used as the point where the configured blur reaches full strength.
    * Smaller controls proportionally reduce frost so short bars don't look
    * heavier than larger surfaces.
@@ -149,56 +140,69 @@ interface PresetTuning {
   specular: number;
 }
 
+// Apple, official (Meet Liquid Glass, WWDC25; Adopting Liquid Glass): "as glass
+// morphs to LARGER sizes … it casts deeper, richer shadows, has more pronounced
+// lensing and refraction effects, and a softer scattering of light … aid in the
+// legibility." So lensing / refraction / scatter (blur) / specular increase
+// MONOTONICALLY with size — control < card < panel. Navigation bars are part of
+// the "functional layer for controls and navigation … letting content shine
+// through" — kept optically quiet (low lensing) but frosted for legibility.
 const OPTICAL_PROFILE: Record<Exclude<LiquidGlassOpticalProfile, 'auto'>, OpticalTuning> = {
-  // Navigation bars and headers are part of the top functional layer, but Apple
-  // keeps them visually quiet so content remains the hero. This should feel
-  // closer to a scroll-edge/navigation material than a magnifying control.
+  // Navigation bar / header — functional layer, content is the hero. Quiet
+  // lensing, but a legibility frost that holds even when the bar is short.
   bar: {
-    thickness: 0.38,
-    refraction: 0.22,
-    blur: 0.82,
-    specular: 0.38,
-    blurReferenceShortSide: 160,
+    thickness: 0.42,
+    refraction: 0.3,
+    blur: 0.95,
+    specular: 0.5,
+    shadow: 0.7,
+    blurReferenceShortSide: 150,
     minBlurScale: 0.72,
   },
-  // Buttons, switches, sliders, and media controls can flex into the glass more
-  // visibly because their footprint is small and their symbols are bold.
+  // Small controls (buttons, switches, sliders, media controls) — thinner glass
+  // ⇒ less pronounced lensing than a card; clear so bold symbols/content shine
+  // through (low frost).
   control: {
-    thickness: 1.12,
-    refraction: 1.16,
-    blur: 0.78,
-    specular: 1.16,
-    blurReferenceShortSide: 160,
-    minBlurScale: 0.42,
+    thickness: 0.9,
+    refraction: 0.9,
+    blur: 0.75,
+    specular: 1.0,
+    shadow: 0.65,
+    blurReferenceShortSide: 140,
+    minBlurScale: 0.45,
   },
-  // Cards need separation without competing with the content layer.
+  // Cards — the reference (separation without competing with content).
   card: {
     thickness: 1,
-    refraction: 0.96,
-    blur: 0.96,
+    refraction: 1,
+    blur: 1,
     specular: 1,
+    shadow: 1,
     blurReferenceShortSide: DEFAULT_SURFACE_REFERENCE_SHORT_SIDE,
     minBlurScale: DEFAULT_MIN_SIZE_BLUR_SCALE,
   },
-  // Large sidebars, sheets, menus, and panels adapt gently; too much lensing
-  // across a large area becomes distracting.
+  // Large sidebars, sheets, menus, panels — thicker, more substantial material:
+  // MORE pronounced lensing/refraction, a softer (heavier) scatter, richer
+  // highlights. The lens stays edge-concentrated so the large body still reads.
   panel: {
-    thickness: 0.86,
-    refraction: 0.68,
-    blur: 1.08,
-    specular: 0.86,
-    blurReferenceShortSide: 240,
-    minBlurScale: 0.48,
+    thickness: 1.2,
+    refraction: 1.18,
+    blur: 1.15,
+    specular: 1.12,
+    shadow: 1.5,
+    blurReferenceShortSide: 260,
+    minBlurScale: 0.5,
   },
-  // Selected capsules should feel lifted from the same plane, but not become a
-  // separate glass-on-glass object.
+  // Selected capsule — lifted from the same plane, slightly below a card so it
+  // never becomes a separate glass-on-glass object.
   selection: {
-    thickness: 0.94,
-    refraction: 0.82,
+    thickness: 0.95,
+    refraction: 0.88,
     blur: 0.9,
     specular: 1,
-    blurReferenceShortSide: 160,
-    minBlurScale: 0.5,
+    shadow: 0.6,
+    blurReferenceShortSide: 150,
+    minBlurScale: 0.55,
   },
 };
 
@@ -665,11 +669,28 @@ export class LiquidGlass {
     this.applyEdges();
   }
 
-  /** Scheme-aware rim + inner glow + float shadow that complete the glass look. */
+  /**
+   * Scheme-aware rim + inner glow + float shadow. The inset layers (hairline,
+   * top sheen, bottom shade) are fixed, but the outer float shadow scales with
+   * the profile's `shadow` — larger glass "casts deeper, richer shadows."
+   */
   private applyEdges(): void {
     if (!this.options.edges) return;
-    const scheme = this.resolveScheme();
-    this.element.style.boxShadow = scheme === 'dark' ? EDGE_SHADOW_DARK : EDGE_SHADOW_LIGHT;
+    const dark = this.resolveScheme() === 'dark';
+    const s = this.opticalTuning().shadow;
+    const oy = (4 * s).toFixed(1);
+    const blur = (12 * s).toFixed(1);
+    // Offset/blur scale linearly; opacity grows more gently and is capped so big
+    // panels read as deep, not heavy.
+    const baseAlpha = dark ? 0.24 : 0.09;
+    const alpha = Math.min(dark ? 0.4 : 0.18, baseAlpha * Math.pow(s, 0.7)).toFixed(3);
+    const float = dark
+      ? `0 ${oy}px ${blur}px rgba(0, 0, 0, ${alpha})`
+      : `0 ${oy}px ${blur}px rgba(31, 38, 135, ${alpha})`;
+    const inset = dark
+      ? 'inset 0 0 0 0.5px rgba(255,255,255,0.09), inset 0 2px 4px rgba(255,255,255,0.16), inset 0 -3px 6px rgba(0,0,0,0.18)'
+      : 'inset 0 0 0 0.5px rgba(255,255,255,0.16), inset 0 2px 4px rgba(255,255,255,0.32), inset 0 -3px 6px rgba(0,0,0,0.06)';
+    this.element.style.boxShadow = `${inset}, ${float}`;
   }
 
   private variantTint(): string {
