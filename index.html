@@ -251,6 +251,15 @@
               <div class="fallback-pill liquid-glass" data-liquid-glass='{"radius":20,"quality":"low","thickness":52,"refraction":34,"refractBackground":"linear-gradient(135deg,#3a1c71,#d76d77,#ffaf7b)"}'>Aa Glass</div>
             </div>
           </div>
+
+          <!-- Cross-browser refraction from a scene element (Chromium-level in all 3) -->
+          <div class="anim-card liquid-glass" data-liquid-glass='{"radius":24,"profile":"panel","preset":"auto","variant":"regular"}'>
+            <div class="anim-label">Cross-browser — refracts a scene element (Firefox -moz-element / Safari clone). Forced via quality:'low'</div>
+            <div class="xbrowser-stage">
+              <div class="xbrowser-scene" id="xbrowser-scene"></div>
+              <div class="xbrowser-glass liquid-glass" data-liquid-glass='{"radius":20,"quality":"low","thickness":56,"refraction":36,"backdropSource":"#xbrowser-scene"}'>Aa Glass</div>
+            </div>
+          </div>
         </div>
 
         <!-- The sheet itself (fixed-positioned, hidden until presented) -->

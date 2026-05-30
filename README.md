@@ -181,6 +181,7 @@ LiquidInteractive.initAll();
 | `root` | auto | tree scope for the shared `<svg defs>`; auto-detected from `getRootNode()` so it works inside a Shadow DOM |
 | `fallbackFilter` | profile-aware | CSS `backdrop-filter` used on non-Chromium / `quality:'low'` / reduced-transparency. Leave unset to derive blur/saturation from the resolved profile; pass a string to override. |
 | `refractBackground` | — | opt-in real refraction for the Safari/Firefox fallback: a CSS background equal to the page's *fixed* backdrop, displaced inside the glass via a regular `filter:`. Ignored on Chromium. See [Browser support](#browser-support). |
+| `backdropSource` | — | `HTMLElement` or selector for a discrete *scene* element behind the glass. Gives Chromium-level refraction in **all three engines** (Firefox via `-moz-element()`, Safari/others via a position-synced DOM clone, Chromium via its native path). Refracts real, arbitrary scene content. See [Browser support](#browser-support). |
 | `respectReducedMotion` | `true` | fall back to the cheap filter when `prefers-reduced-transparency` is set |
 
 ## Instance API
@@ -465,6 +466,34 @@ Use `background-attachment: fixed` values so the replicated copy lines up with
 the real page background. Ignored on Chromium (the real backdrop is already
 refracted). You can preview this path on any browser by forcing the fallback
 with `quality: 'low'` (see the "Safari path" card in the demo).
+
+**Chromium-level refraction in all three engines — `backdropSource`.** The one
+technique that works everywhere is *"put a copy of what's behind the glass
+inside it and displace that copy with a regular SVG `filter:`"* (the only SVG
+filter form Safari and Firefox support). Point the glass at a discrete **scene**
+element it floats over — a map, photo, video, or gradient panel — and the engine
+refracts that scene with the *same displacement map* per engine, so the result
+matches Chromium:
+
+```ts
+new LiquidGlass(glassEl, { backdropSource: '#scene' }); // or an HTMLElement
+```
+
+- **Chromium** → its native `backdrop-filter` path (the option is ignored — the
+  real backdrop is already refracted, live, for free).
+- **Firefox** → `-moz-element(#scene)` paints the **live** scene as the lens
+  source; a regular `filter:` then displaces it. Live, no clone.
+- **Safari / others** → a **DOM clone** of the scene, kept position-synced to
+  where the scene really is (re-aligned on scroll & resize), displaced the same
+  way. The clone is `inert` + `aria-hidden` with ids stripped.
+
+Constraints: the scene must be a *separate* element (not the glass or an
+ancestor — that would recurse / paint-loop). The clone is a static copy, so
+video/`<canvas>`/form state in the scene aren't live in the Safari path (Firefox
+stays live via `-moz-element`); best for discrete, mostly-static scenes. Unlike
+`refractBackground` (a fixed CSS background), this refracts real, arbitrary
+scene content. Preview on any browser via `quality: 'low'` (the "Cross-browser"
+card in the demo forces the clone path).
 
 **Reduced transparency.** `prefers-reduced-transparency: reduce` takes the
 calmest path: a plain profile-aware frost with none of the above enhancements
