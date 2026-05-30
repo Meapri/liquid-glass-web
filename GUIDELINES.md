@@ -53,18 +53,36 @@ Liquid glass looks best when it has something to refract!
 
 ## 4. Parameter Tuning
 
-The engine accepts parameters via data attributes or JS options. The demo uses
-one **Apple-standard set** on every element — `thickness: 30`, `refraction: 44`,
-and variant-driven frost — so the material reads consistently across sizes.
+The engine accepts parameters via data attributes or JS options. Prefer
+`profile: 'auto'` and `preset: 'auto'` over manually hand-tuning every surface.
+The library uses one reference material (`thickness: 44`, `refraction: 46`,
+`variant: 'regular'`) and then applies profile + preset multipliers for the
+final look.
 
-- `thickness`: lens depth (glass "thickness"). Deeper ⇒ more pronounced edge
-  lensing, matching Apple's "thicker material has more pronounced lensing." `30`
-  is the standard; `20–24` for a thinner look, `40–60` for a chunky lens.
-- `refraction`: edge lensing strength in px. `44` is the standard; the engine
-  auto-caps it to ½ the short side so small controls stay coherent and never fold.
-- `blur`: backdrop frost. Defaults per variant (`regular` 10, `clear` 3,
-  `tinted` 14) — kept low so the backdrop reads through and the lensing shows.
-  Raise for structural surfaces (sidebars) that need more legibility.
+- `profile: 'bar'`: headers and toolbars. More blur/dissolve, restrained
+  refraction, soft material edge.
+- `profile: 'control'`: independent buttons, sliders, switches, and media
+  controls. Stronger lensing and gloss.
+- `profile: 'selection'`: active tab/segmented capsules. Medium-high lensing
+  with a lifted capsule feel.
+- `profile: 'card'`: compact content cards. Vivid refraction with balanced
+  frost for text.
+- `profile: 'panel'`: sheets, menus, sidebars, and popovers. More readable
+  frost and softer lensing across larger surfaces.
+- `preset: 'auto'`: chooses good intensity from the resolved profile. Controls
+  and selections become vivid; larger/static surfaces stay balanced.
+- `preset: 'subtle' | 'balanced' | 'vivid' | 'dramatic'`: use these only for
+  product-specific art direction.
+- `thickness`: reference lens depth. Deeper values make every profile feel more
+  convex.
+- `refraction`: reference lensing strength. Profiles scale and size-cap it so
+  small controls do not fold.
+- `blur`: reference frost. Profiles apply their own size floor so short bars do
+  not collapse into plain transparency.
+
+Avoid nesting `LiquidGlass` inside another `LiquidGlass` just to draw a button.
+Inside an existing glass surface, prefer a tint/fill overlay unless the nested
+control needs to behave like a distinct floating object.
 
 ## 5. Edges & Lighting
 

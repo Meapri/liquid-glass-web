@@ -1,0 +1,123 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
+}
+
+body {
+  color: white;
+  background:
+    repeating-linear-gradient(135deg, transparent 0 80px, rgba(255, 255, 255, 0.16) 80px 150px),
+    radial-gradient(ellipse at 18% 24%, #ff4d83 0%, transparent 46%),
+    radial-gradient(ellipse at 74% 24%, #ffc347 0%, transparent 48%),
+    radial-gradient(ellipse at 45% 72%, #2f86ff 0%, transparent 52%),
+    radial-gradient(ellipse at 20% 82%, #31d177 0%, transparent 44%),
+    #160f2d;
+  background-attachment: fixed;
+}
+
+.fixture-scene {
+  min-height: 100vh;
+  padding: 32px;
+}
+
+.centered {
+  display: grid;
+  place-items: center;
+  gap: 24px;
+}
+
+.fixture-bar {
+  width: min(960px, calc(100vw - 48px));
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  padding: 13px 22px;
+}
+
+.fixture-bar nav {
+  margin-left: auto;
+  display: flex;
+  gap: 24px;
+  font-weight: 650;
+}
+
+.fixture-control,
+.fixture-icon {
+  border: 0;
+  color: white;
+  font: inherit;
+  font-weight: 750;
+}
+
+.fixture-control {
+  min-width: 140px;
+  padding: 18px 32px;
+}
+
+.fixture-icon {
+  width: 72px;
+  height: 72px;
+  font-size: 24px;
+}
+
+.fixture-card,
+.fixture-panel {
+  width: min(420px, calc(100vw - 48px));
+  padding: 28px;
+}
+
+.fixture-panel {
+  min-height: 300px;
+}
+
+h1,
+p {
+  margin: 0;
+}
+
+h1 {
+  margin-bottom: 10px;
+}
+
+p {
+  line-height: 1.5;
+  opacity: 0.86;
+}
+
+.fixture-fill {
+  margin-top: 28px;
+  border: 0;
+  border-radius: 999px;
+  padding: 12px 22px;
+  color: white;
+  background: rgba(255, 255, 255, 0.22);
+  font: inherit;
+  font-weight: 700;
+}
+
+.fixture-tabs {
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+}
+
+.fixture-tabs button {
+  border: 0;
+  border-radius: 999px;
+  padding: 12px 18px;
+  color: white;
+  background: transparent;
+  font: inherit;
+  font-weight: 750;
+}
+
+.fixture-tabs .active {
+  background: rgba(255, 255, 255, 0.24);
+}

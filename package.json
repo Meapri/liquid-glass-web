@@ -14,7 +14,9 @@
     "build": "vite build",
     "build:lib": "vite build --config vite.lib.config.ts",
     "preview": "vite preview --port 4173",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:auto-profile": "npm run build:lib && node tests/auto-profile.mjs",
+    "test": "npm run typecheck && npm run test:auto-profile"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",

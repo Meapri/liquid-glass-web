@@ -166,6 +166,24 @@ input[type='text'] {
   font-weight: 600;
 }
 
+.glass-overlay {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.2);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.26),
+    inset 0 1px 3px rgba(255, 255, 255, 0.38),
+    0 1px 2px rgba(0, 0, 0, 0.12);
+  transition: background 160ms ease, transform 160ms ease;
+}
+.glass-overlay:hover { background: rgba(255, 255, 255, 0.28); }
+.glass-overlay:active { transform: scale(0.97); }
+.glass-overlay-accent {
+  background: rgba(10, 132, 255, 0.42);
+}
+.glass-overlay-accent:hover {
+  background: rgba(10, 132, 255, 0.52);
+}
+
 /* === Layout === */
 .canvas {
   position: relative;
