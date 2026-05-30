@@ -18,33 +18,10 @@ html, body {
 }
 
 body {
-  background:
-    /* Chunky diagonal bands that survive the frost blur so the rim's lens
-     * fold is dramatic. ~85px wavelength → backdrop features that the
-     * displacement can actually pull through. */
-    repeating-linear-gradient(
-      135deg,
-      transparent 0,
-      transparent 70px,
-      rgba(255, 255, 255, 0.16) 70px,
-      rgba(255, 255, 255, 0.16) 140px
-    ),
-    repeating-linear-gradient(
-      45deg,
-      transparent 0,
-      transparent 100px,
-      rgba(0, 0, 0, 0.10) 100px,
-      rgba(0, 0, 0, 0.10) 180px
-    ),
-    radial-gradient(ellipse 50% 60% at 12% 18%, #ff5b8b 0%, transparent 45%),
-    radial-gradient(ellipse 60% 70% at 86% 12%, #ffb648 0%, transparent 50%),
-    radial-gradient(ellipse 50% 60% at 78% 52%, #4f7bff 0%, transparent 50%),
-    radial-gradient(ellipse 55% 60% at 18% 78%, #25d36a 0%, transparent 45%),
-    radial-gradient(ellipse 45% 55% at 50% 92%, #a55bff 0%, transparent 55%),
-    radial-gradient(ellipse 70% 60% at 60% 35%, #ff7355 0%, transparent 50%),
-    #1a1030;
-  background-attachment: fixed;
-  background-size: cover;
+  /* The full scene now lives on .background (a discrete fixed element) so every
+   * glass box can refract it cross-browser via backdropSource. Body is just the
+   * solid base behind it. */
+  background: #1a1030;
 }
 
 button {
@@ -73,6 +50,32 @@ input[type='text'] {
   z-index: 0;
   pointer-events: none;
   overflow: hidden;
+  /* The page scene — referenced by every glass box's backdropSource so the
+   * lensing works in Safari/Firefox too (a clone / -moz-element of THIS). Chunky
+   * diagonal bands survive the frost so the rim's lens fold is dramatic. */
+  background:
+    repeating-linear-gradient(
+      135deg,
+      transparent 0,
+      transparent 70px,
+      rgba(255, 255, 255, 0.16) 70px,
+      rgba(255, 255, 255, 0.16) 140px
+    ),
+    repeating-linear-gradient(
+      45deg,
+      transparent 0,
+      transparent 100px,
+      rgba(0, 0, 0, 0.10) 100px,
+      rgba(0, 0, 0, 0.10) 180px
+    ),
+    radial-gradient(ellipse 50% 60% at 12% 18%, #ff5b8b 0%, transparent 45%),
+    radial-gradient(ellipse 60% 70% at 86% 12%, #ffb648 0%, transparent 50%),
+    radial-gradient(ellipse 50% 60% at 78% 52%, #4f7bff 0%, transparent 50%),
+    radial-gradient(ellipse 55% 60% at 18% 78%, #25d36a 0%, transparent 45%),
+    radial-gradient(ellipse 45% 55% at 50% 92%, #a55bff 0%, transparent 55%),
+    radial-gradient(ellipse 70% 60% at 60% 35%, #ff7355 0%, transparent 50%),
+    #1a1030;
+  background-size: cover;
 }
 
 .bg-layer {
