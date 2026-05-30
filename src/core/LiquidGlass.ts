@@ -248,6 +248,24 @@ const SUPPORTS_MOZ_ELEMENT =
   typeof CSS.supports === 'function' &&
   CSS.supports('background-image', '-moz-element(#lg)');
 
+/**
+ * Phone/tablet class. backdrop-filter + an SVG filter is very heavy on mobile
+ * GPUs — it is re-run every frame the backdrop scrolls — so on mobile we render
+ * the maps much smaller, frost lighter, drop the chromatic pass, and lazily
+ * tear down off-screen glass so only what's visible costs anything.
+ */
+const IS_MOBILE =
+  typeof navigator !== 'undefined' &&
+  (((navigator as Navigator & { userAgentData?: { mobile?: boolean } }).userAgentData?.mobile === true) ||
+    /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent));
+
+/** Touch devices with no hover gain nothing from the pointer-tracked edge light,
+ * and updating it during a touch-scroll just costs style recalcs. */
+const NO_HOVER =
+  typeof window !== 'undefined' &&
+  typeof window.matchMedia === 'function' &&
+  window.matchMedia('(hover: none)').matches;
+
 let sceneIdCounter = 0;
 
 // One shared window-resize listener for ALL instances (a page with hundreds of
@@ -292,6 +310,7 @@ function parseBgLuminance(color: string): number | null {
 /** Cheap device-class heuristic for quality:'auto'. */
 function autoQuality(): Exclude<LiquidGlassQuality, 'auto'> {
   if (typeof navigator === 'undefined') return 'balanced';
+  if (IS_MOBILE) return 'balanced'; // never pay for the 3-pass chromatic on a phone GPU
   const cores = navigator.hardwareConcurrency ?? 4;
   const mem = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 4;
   if (cores <= 4 || mem <= 4) return 'balanced';
@@ -453,8 +472,10 @@ export class LiquidGlass {
 
     // Pointer-tracked edge light for every glass element (core, not just
     // .lg-interactive). The CSS `.liquid-glass::after` consumes the vars — pure
-    // CSS/JS, so it works on the Safari/Firefox fallback too.
-    if (!this.reducedTransparency) registerPointerLight(this.element);
+    // CSS/JS, so it works on the Safari/Firefox fallback too. Skipped on
+    // hover-less touch devices: it gains nothing there and updating it during a
+    // touch-scroll only costs style recalcs.
+    if (!this.reducedTransparency && !NO_HOVER) registerPointerLight(this.element);
 
     // Sample the backdrop once laid out (content-aware shadow + adaptive scheme).
     // Also runs on the fallback path: luminance sampling is plain DOM, so Safari
@@ -958,17 +979,23 @@ export class LiquidGlass {
         const visible = entries[entries.length - 1]?.isIntersecting ?? false;
         if (this.destroyed || this.suspended) return;
         if (visible) {
-          if (!this.filter) this.installFilter();
-          else {
+          if (!this.filter) {
+            // First reveal: time-slice the map build so several boxes scrolling
+            // into view at once don't block the scroll.
+            this.scheduleBuild(() => this.installFilter());
+          } else {
             const css = this.filter.url;
             this.element.style.backdropFilter = css;
             (this.element.style as WebkitStyle).webkitBackdropFilter = css;
           }
-        } else if (this.filter) {
-          // Off-screen: drop the GPU cost but keep the built filter for a
-          // cheap re-attach when it scrolls back in.
-          this.element.style.backdropFilter = 'none';
-          (this.element.style as WebkitStyle).webkitBackdropFilter = 'none';
+        } else {
+          // Off-screen: don't build a filter we won't show, and drop the GPU
+          // cost of any built one (keep it for a cheap re-attach on return).
+          this.cancelPendingBuild();
+          if (this.filter) {
+            this.element.style.backdropFilter = 'none';
+            (this.element.style as WebkitStyle).webkitBackdropFilter = 'none';
+          }
         }
       },
       { rootMargin: this.options.lazyMargin }
@@ -1011,7 +1038,10 @@ export class LiquidGlass {
     const preset = this.presetTuning();
     const sizeScale = Math.max(tuning.minBlurScale, Math.min(1, short / tuning.blurReferenceShortSide));
     const cap = short * 0.14;
-    return Math.min(this.options.blur * tuning.blur * preset.blur * sizeScale, cap);
+    const blur = Math.min(this.options.blur * tuning.blur * preset.blur * sizeScale, cap);
+    // A Gaussian backdrop blur's GPU cost grows with its radius; cap it tighter
+    // on mobile where backdrop-filter is re-run every scroll frame.
+    return IS_MOBILE ? Math.min(blur * 0.85, 9) : blur;
   }
 
   /**
@@ -1024,15 +1054,20 @@ export class LiquidGlass {
   private displacementDpr(): number {
     const short = Math.min(this.currentWidth, this.currentHeight);
     const factor = short > 220 ? 0.45 : 0.6;
-    return this.options.mapPixelRatio * factor;
+    const dpr = this.options.mapPixelRatio * factor;
+    // The lens is a smooth field that upscales cleanly, so on mobile we render it
+    // at ~0.4× — a big cut in per-frame filter sampling with no visible loss.
+    return IS_MOBILE ? Math.min(dpr, 0.4) : dpr;
   }
 
   /**
-   * The specular PNG is the most expensive map to build, but users requested it 
-   * to stay at full resolution (1.0) so the edge lighting remains razor sharp.
+   * The specular PNG stays full resolution on desktop (razor-sharp rim), but is
+   * the biggest texture, so on mobile it's capped to 1× to halve sampling.
    */
   private specularDpr(): number {
-    return this.options.mapPixelRatio;
+    return IS_MOBILE
+      ? Math.min(this.options.mapPixelRatio, 1)
+      : this.options.mapPixelRatio;
   }
 
   private installFilter(): void {
@@ -1402,7 +1437,9 @@ export class LiquidGlass {
       applyRadius: opts.applyRadius ?? DEFAULT_OPTIONS.applyRadius,
       mapPixelRatio: opts.mapPixelRatio ?? DEFAULT_OPTIONS.mapPixelRatio,
       quality: opts.quality ?? DEFAULT_OPTIONS.quality,
-      lazy: opts.lazy ?? DEFAULT_OPTIONS.lazy,
+      // On mobile, default to lazy so off-screen glass tears its filter down —
+      // only what's on screen costs GPU during scroll. Explicit `lazy` wins.
+      lazy: opts.lazy ?? (IS_MOBILE ? true : DEFAULT_OPTIONS.lazy),
       lazyMargin: opts.lazyMargin ?? DEFAULT_OPTIONS.lazyMargin,
       root: opts.root ?? DEFAULT_OPTIONS.root,
       fallbackFilter: opts.fallbackFilter ?? DEFAULT_OPTIONS.fallbackFilter,
