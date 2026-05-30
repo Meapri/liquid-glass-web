@@ -35,6 +35,7 @@ import { FilterChain } from './FilterChain';
 import { getDisplacementMap, getSpecularMap } from './MapCache';
 import { registerPointerLight, unregisterPointerLight } from './PointerField';
 import { getWebGLRefractor } from './WebGLRefractor';
+import type { RefractorBoxParams } from './WebGLRefractor';
 
 const VARIANT_TINT: Record<LiquidGlassVariant, { light: string; dark: string }> = {
   regular: {
@@ -276,6 +277,14 @@ function roundCss(value: number): string {
   return String(Math.round(value * 1000) / 1000);
 }
 
+/** Parse a CSS rgb/rgba color to [r,g,b,a] in 0..1 (for the GPU tint uniform). */
+function parseRgba(color: string): [number, number, number, number] {
+  const m = color.match(/rgba?\(([^)]+)\)/);
+  if (!m) return [1, 1, 1, 0];
+  const p = m[1].split(',').map((s) => parseFloat(s));
+  return [(p[0] || 0) / 255, (p[1] || 0) / 255, (p[2] || 0) / 255, p[3] == null ? 1 : p[3]];
+}
+
 /** Ensure the scene element has an id so `-moz-element(#id)` can reference it. */
 function ensureSceneId(el: HTMLElement): string {
   if (!el.id) el.id = `lg-scene-${++sceneIdCounter}`;
@@ -315,7 +324,9 @@ export class LiquidGlass {
   private refractClone: HTMLElement | null = null;
   private backdropMode: 'webgl' | 'moz' | 'clone' | null = null;
   private backdropSyncRaf = 0;
-  private webglHandle: { surface: HTMLCanvasElement; destroy: () => void; refresh: () => void } | null = null;
+  /** Primary GPU refraction (shared WebGL canvas) is active for this element. */
+  private usesGpu = false;
+  private gpuHandle: { destroy: () => void; refresh: () => void } | null = null;
   private regenTimer: number | null = null;
   /** Backdrop-aware shadow multiplier (1 = neutral; >1 darker backdrop). */
   private shadowAdapt = 1;
@@ -353,7 +364,12 @@ export class LiquidGlass {
     // Decide the rendering path once.
     this.usesFallback = this.shouldFallback();
 
-    if (this.usesFallback) {
+    // Chromium keeps its superior native backdrop-filter. On the fallback path
+    // (Safari/Firefox, or forced via quality:'low') a refraction scene routes
+    // the box through the shared WebGL renderer instead of the CSS-only frost.
+    if (this.usesFallback && !this.reducedTransparency && this.tryInstallGpu()) {
+      this.usesGpu = true;
+    } else if (this.usesFallback) {
       this.applyFallback();
     } else if (this.options.lazy && typeof IntersectionObserver !== 'undefined') {
       this.setupLazy();
@@ -361,8 +377,8 @@ export class LiquidGlass {
       this.installFilter();
     }
 
-    // Size tracking (skip while suspended/fallback — fallback needs no regen).
-    if (!this.usesFallback) {
+    // Size tracking (the GPU path needs it too; the plain CSS fallback doesn't).
+    if (!this.usesFallback || this.usesGpu) {
       this.resizeObserver = new ResizeObserver((entries) => {
         for (const entry of entries) {
           const box = entry.borderBoxSize?.[0];
@@ -378,7 +394,8 @@ export class LiquidGlass {
           if (this.options.applyRadius) {
             this.element.style.borderRadius = `${this.computedRadius()}px`;
           }
-          this.scheduleRegen();
+          if (this.usesGpu) this.gpuHandle?.refresh();
+          else this.scheduleRegen();
         }
       });
       this.resizeObserver.observe(element, { box: 'border-box' });
@@ -427,6 +444,11 @@ export class LiquidGlass {
       this.usesFallback !== this.shouldFallback()
     ) {
       this.rebuild();
+      return;
+    }
+
+    if (this.usesGpu) {
+      this.gpuHandle?.refresh(); // live param change → re-upload uniforms/maps
       return;
     }
 
@@ -514,6 +536,7 @@ export class LiquidGlass {
     if (this.suspended || this.destroyed) return;
     this.suspended = true;
     this.removeFallbackFx();
+    this.teardownGpu();
     this.element.style.backdropFilter = 'none';
     (this.element.style as WebkitStyle).webkitBackdropFilter = 'none';
   }
@@ -522,7 +545,9 @@ export class LiquidGlass {
   resume(): void {
     if (!this.suspended || this.destroyed) return;
     this.suspended = false;
-    if (this.usesFallback) {
+    if (this.usesFallback && !this.reducedTransparency && this.tryInstallGpu()) {
+      this.usesGpu = true;
+    } else if (this.usesFallback) {
       this.applyFallback();
     } else if (this.filter) {
       const css = this.filter.url;
@@ -550,6 +575,7 @@ export class LiquidGlass {
     window.removeEventListener('scroll', this.onBackdropScroll, { capture: true } as EventListenerOptions);
     if (this.scrollRaf) cancelAnimationFrame(this.scrollRaf);
     this.removeFallbackFx();
+    this.teardownGpu();
     this.filter?.destroy();
     this.filter = null;
     unregisterPointerLight(this.element);
@@ -610,6 +636,59 @@ export class LiquidGlass {
    * The pointer light, adaptive scheme and content-aware shadow are already
    * enabled on this path; this adds the parts that lived inside the filter.
    */
+  /**
+   * Primary GPU path: render this element's refraction through the shared WebGL
+   * canvas (same on every browser). Needs `backdropSource` to resolve to an
+   * uploadable scene (<canvas>/<img>/<video>) and WebGL2. The element becomes a
+   * transparent window — its tint/refraction come from the shader, while its
+   * box-shadow, rim light and text stay CSS. Returns false to fall through to
+   * the native filter / CSS fallback.
+   */
+  private tryInstallGpu(): boolean {
+    const scene = this.resolveBackdropSource();
+    if (!scene) return false;
+    const refractor = getWebGLRefractor();
+    if (!refractor) return false;
+    if (!refractor.canvas.isConnected) document.body.appendChild(refractor.canvas);
+    const handle = refractor.register(this.element, scene, () => this.gpuParams());
+    if (!handle) return false;
+    this.gpuHandle = handle;
+    // Transparent window: the shader paints the backdrop; drop the element's own
+    // background tint and any backdrop-filter.
+    this.element.style.backgroundColor = 'transparent';
+    this.dropOwnBackdrop();
+    return true;
+  }
+
+  private gpuParams(): RefractorBoxParams {
+    const disp = getDisplacementMap({
+      width: this.currentWidth,
+      height: this.currentHeight,
+      radius: this.computedRadius(),
+      thickness: this.computedThickness(),
+      pixelRatio: this.displacementDpr(),
+      refraction: this.profiledRefraction(),
+    });
+    return {
+      displacementMapUrl: disp.url,
+      displacementPadding: disp.padding,
+      specularMapUrl: this.options.specular ? this.specularMapUrl() : null,
+      refraction: this.effectiveRefraction(),
+      blur: this.effectiveBlur(),
+      chromaticAberration: this.effectiveChromatic(),
+      saturation: this.options.saturation,
+      radius: this.computedRadius(),
+      tint: parseRgba(this.options.tint ?? this.variantTint()),
+    };
+  }
+
+  private teardownGpu(): void {
+    if (!this.gpuHandle) return;
+    this.gpuHandle.destroy();
+    this.gpuHandle = null;
+    this.usesGpu = false;
+  }
+
   private installFallbackFx(): void {
     this.removeFallbackFx();
     if (!this.fallbackEnhanced() || this.suspended) return;
@@ -659,41 +738,9 @@ export class LiquidGlass {
    * the same map Chromium runs in backdrop-filter, so the result matches.
    */
   private installBackdropRefraction(scene: HTMLElement): void {
-    // Preferred: a single shared WebGL canvas refracts the scene for every box.
-    // Scrolling only updates uniforms (no per-frame layout writes / clones), so
-    // it stays smooth, and the lensing matches Chromium (same maps as textures).
-    const refractor = getWebGLRefractor();
-    if (refractor) {
-      const handle = refractor.register(this.element, scene, () => {
-        const disp = getDisplacementMap({
-          width: this.currentWidth,
-          height: this.currentHeight,
-          radius: this.computedRadius(),
-          thickness: this.computedThickness(),
-          pixelRatio: this.displacementDpr(),
-          refraction: this.profiledRefraction(),
-        });
-        return {
-          displacementMapUrl: disp.url,
-          displacementPadding: disp.padding,
-          specularMapUrl: this.options.specular ? this.specularMapUrl() : null,
-          refraction: this.effectiveRefraction(),
-          blur: this.effectiveBlur(),
-          chromaticAberration: this.effectiveChromatic(),
-          saturation: this.options.saturation,
-        };
-      });
-      if (handle) {
-        this.webglHandle = handle;
-        this.backdropMode = 'webgl';
-        this.backdropSceneEl = scene;
-        this.dropOwnBackdrop();
-        this.element.insertBefore(handle.surface, this.element.firstChild);
-        this.fxLayer = handle.surface;
-        return;
-      }
-    }
-
+    // WebGL is the primary path (tryInstallGpu, tried before this). This is the
+    // last-resort fallback when WebGL2 / an uploadable scene isn't available:
+    // Firefox uses a LIVE -moz-element image, others a position-synced clone.
     const layer = document.createElement('div');
     layer.setAttribute('aria-hidden', 'true');
     layer.style.cssText =
@@ -819,11 +866,6 @@ export class LiquidGlass {
     if (this.backdropSyncRaf) {
       cancelAnimationFrame(this.backdropSyncRaf);
       this.backdropSyncRaf = 0;
-    }
-    if (this.webglHandle) {
-      this.webglHandle.destroy(); // removes the surface canvas itself
-      this.webglHandle = null;
-      this.fxLayer = null;
     }
     this.refractClone = null;
     this.backdropSceneEl = null;
@@ -966,8 +1008,11 @@ export class LiquidGlass {
     this.filter?.destroy();
     this.filter = null;
     this.removeFallbackFx();
+    this.teardownGpu();
     this.usesFallback = this.shouldFallback();
-    if (this.usesFallback) {
+    if (this.usesFallback && !this.reducedTransparency && !this.suspended && this.tryInstallGpu()) {
+      this.usesGpu = true;
+    } else if (this.usesFallback) {
       this.applyFallback();
     } else if (!this.suspended) {
       this.installFilter();
@@ -1009,12 +1054,15 @@ export class LiquidGlass {
 
   private applyTint(): void {
     const tint = this.options.tint ?? this.variantTint();
-    this.element.style.backgroundColor = tint;
+    // On the GPU path the shader applies the tint; the element stays a
+    // transparent window. Otherwise the element background carries the tint.
+    this.element.style.backgroundColor = this.usesGpu ? 'transparent' : tint;
     this.element.dataset.scheme = this.resolveScheme();
     // Mark adaptive elements so the stylesheet can flip the label color to keep
     // it legible against the resolved appearance (dark text on light glass,
     // light text on dark glass).
     if (this.options.scheme === 'adaptive') this.element.dataset.adaptive = '';
+    if (this.usesGpu) this.gpuHandle?.refresh(); // tint/scheme changed → re-upload uniforms
     this.applyEdges();
   }
 
