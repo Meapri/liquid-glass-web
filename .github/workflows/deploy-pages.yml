@@ -16,14 +16,20 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
+# Run the JS actions on Node 24 ahead of the June 2026 runner default — covers
+# the Pages actions (configure-pages / upload-pages-artifact / deploy-pages)
+# that don't yet ship a Node 24 major.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - run: npm ci
       - run: npm run build
