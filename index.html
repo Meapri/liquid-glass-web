@@ -14,9 +14,10 @@
     <link rel="stylesheet" href="/demo/styles.css" />
   </head>
   <body>
-    <!-- Refraction scene: the plain gradient every glass box refracts via
-         backdropSource (cross-browser). Kept filter-free so it clones cleanly. -->
-    <div id="lg-scene" class="lg-scene" aria-hidden="true"></div>
+    <!-- Refraction scene: a <canvas> painted with the page gradient. Every glass
+         box refracts it via backdropSource. A canvas is directly uploadable to a
+         WebGL texture (taint-free), so the GPU cross-browser path works. -->
+    <canvas id="lg-scene" class="lg-scene" aria-hidden="true"></canvas>
 
     <!-- iOS 26 Liquid Morphing Gooey Filter -->
     <svg style="position: absolute; width: 0; height: 0;" aria-hidden="true">

@@ -34,6 +34,7 @@ import { resolveLiquidGlassAutoProfile } from './AutoProfile';
 import { FilterChain } from './FilterChain';
 import { getDisplacementMap, getSpecularMap } from './MapCache';
 import { registerPointerLight, unregisterPointerLight } from './PointerField';
+import { getWebGLRefractor } from './WebGLRefractor';
 
 const VARIANT_TINT: Record<LiquidGlassVariant, { light: string; dark: string }> = {
   regular: {
@@ -312,8 +313,9 @@ export class LiquidGlass {
   /** backdropSource refraction state (Firefox -moz-element / Safari DOM clone). */
   private backdropSceneEl: HTMLElement | null = null;
   private refractClone: HTMLElement | null = null;
-  private backdropMode: 'moz' | 'clone' | null = null;
+  private backdropMode: 'webgl' | 'moz' | 'clone' | null = null;
   private backdropSyncRaf = 0;
+  private webglHandle: { surface: HTMLCanvasElement; destroy: () => void; refresh: () => void } | null = null;
   private regenTimer: number | null = null;
   /** Backdrop-aware shadow multiplier (1 = neutral; >1 darker backdrop). */
   private shadowAdapt = 1;
@@ -657,6 +659,41 @@ export class LiquidGlass {
    * the same map Chromium runs in backdrop-filter, so the result matches.
    */
   private installBackdropRefraction(scene: HTMLElement): void {
+    // Preferred: a single shared WebGL canvas refracts the scene for every box.
+    // Scrolling only updates uniforms (no per-frame layout writes / clones), so
+    // it stays smooth, and the lensing matches Chromium (same maps as textures).
+    const refractor = getWebGLRefractor();
+    if (refractor) {
+      const handle = refractor.register(this.element, scene, () => {
+        const disp = getDisplacementMap({
+          width: this.currentWidth,
+          height: this.currentHeight,
+          radius: this.computedRadius(),
+          thickness: this.computedThickness(),
+          pixelRatio: this.displacementDpr(),
+          refraction: this.profiledRefraction(),
+        });
+        return {
+          displacementMapUrl: disp.url,
+          displacementPadding: disp.padding,
+          specularMapUrl: this.options.specular ? this.specularMapUrl() : null,
+          refraction: this.effectiveRefraction(),
+          blur: this.effectiveBlur(),
+          chromaticAberration: this.effectiveChromatic(),
+          saturation: this.options.saturation,
+        };
+      });
+      if (handle) {
+        this.webglHandle = handle;
+        this.backdropMode = 'webgl';
+        this.backdropSceneEl = scene;
+        this.dropOwnBackdrop();
+        this.element.insertBefore(handle.surface, this.element.firstChild);
+        this.fxLayer = handle.surface;
+        return;
+      }
+    }
+
     const layer = document.createElement('div');
     layer.setAttribute('aria-hidden', 'true');
     layer.style.cssText =
@@ -782,6 +819,11 @@ export class LiquidGlass {
     if (this.backdropSyncRaf) {
       cancelAnimationFrame(this.backdropSyncRaf);
       this.backdropSyncRaf = 0;
+    }
+    if (this.webglHandle) {
+      this.webglHandle.destroy(); // removes the surface canvas itself
+      this.webglHandle = null;
+      this.fxLayer = null;
     }
     this.refractClone = null;
     this.backdropSceneEl = null;
