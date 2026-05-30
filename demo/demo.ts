@@ -5,12 +5,13 @@ import type { LiquidGlassOptions, LiquidGlassVariant } from '../src';
 // tilt / press behaviour to every .lg-interactive). `registry.instances` is the
 // element→LiquidGlass map the morph helpers below reach into.
 //
-// `backdropSource: '.background'` points every box at the page's scene element,
-// so the refraction works cross-browser: on Chromium this is a no-op (its native
-// backdrop-filter already refracts the real backdrop), while on Safari/Firefox
-// each box refracts a clone / -moz-element of the scene. Per-element configs
+// `backdropSource: '#lg-scene'` points every box at the plain gradient scene
+// element, so refraction works cross-browser: on Chromium this is a no-op (its
+// native backdrop-filter already refracts the real backdrop), while on
+// Safari/Firefox each box refracts a clone / -moz-element of that scene. The
+// scene is filter-free so it renders reliably when cloned. Per-element configs
 // (the adaptive pills, the cross-browser/Safari demo pills) override it.
-const registry = autoEnhance({ defaults: { backdropSource: '.background' } });
+const registry = autoEnhance({ defaults: { backdropSource: '#lg-scene' } });
 const instances = registry.instances;
 
 // === Live playground ===

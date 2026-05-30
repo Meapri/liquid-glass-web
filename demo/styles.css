@@ -44,15 +44,16 @@ input[type='text'] {
 }
 
 /* === Background scene === */
-.background {
+/* The refraction SCENE — a simple, static, filter-free gradient element that
+ * every glass box points its backdropSource at. Kept deliberately plain (no
+ * animated orbs / nested SVG filters) so it clones / -moz-elements cleanly and
+ * renders real refraction in Safari & Firefox. Styled via the CLASS (not the id)
+ * so the cloned copy — which has its id stripped — keeps the gradient. */
+.lg-scene {
   position: fixed;
   inset: 0;
-  z-index: 0;
+  z-index: -1;
   pointer-events: none;
-  overflow: hidden;
-  /* The page scene — referenced by every glass box's backdropSource so the
-   * lensing works in Safari/Firefox too (a clone / -moz-element of THIS). Chunky
-   * diagonal bands survive the frost so the rim's lens fold is dramatic. */
   background:
     repeating-linear-gradient(
       135deg,
@@ -76,6 +77,14 @@ input[type='text'] {
     radial-gradient(ellipse 70% 60% at 60% 35%, #ff7355 0%, transparent 50%),
     #1a1030;
   background-size: cover;
+}
+
+.background {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
 }
 
 .bg-layer {
