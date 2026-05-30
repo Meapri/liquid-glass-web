@@ -1,6 +1,55 @@
 import { LiquidGlass, autoEnhance, LiquidMenu, LiquidSheet, LiquidSelection } from '../src';
 import type { LiquidGlassOptions, LiquidGlassVariant } from '../src';
 
+// Paint the page scene onto the #lg-scene <canvas>. It's both the visible
+// background AND the refraction source: a canvas uploads directly to a WebGL
+// texture (taint-free), so the cross-browser GPU path can sample it. Colour
+// blobs + diagonal bands give the lensing high-frequency structure to bend.
+const sceneCanvas = document.getElementById('lg-scene') as HTMLCanvasElement | null;
+function paintScene(): void {
+  if (!sceneCanvas) return;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  sceneCanvas.width = Math.round(w * dpr);
+  sceneCanvas.height = Math.round(h * dpr);
+  const ctx = sceneCanvas.getContext('2d');
+  if (!ctx) return;
+  ctx.scale(dpr, dpr);
+  ctx.fillStyle = '#1a1030';
+  ctx.fillRect(0, 0, w, h);
+  const blob = (x: number, y: number, r: number, color: string): void => {
+    const g = ctx.createRadialGradient(x * w, y * h, 0, x * w, y * h, r * Math.max(w, h));
+    g.addColorStop(0, color);
+    g.addColorStop(1, 'transparent');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+  };
+  blob(0.12, 0.18, 0.42, '#ff5b8b');
+  blob(0.86, 0.12, 0.46, '#ffb648');
+  blob(0.78, 0.52, 0.44, '#4f7bff');
+  blob(0.18, 0.78, 0.42, '#25d36a');
+  blob(0.5, 0.92, 0.5, '#a55bff');
+  blob(0.6, 0.35, 0.46, '#ff7355');
+  // Diagonal high-frequency bands (survive the frost so the lens fold shows).
+  ctx.save();
+  ctx.translate(w / 2, h / 2);
+  ctx.rotate((135 * Math.PI) / 180);
+  const span = Math.hypot(w, h);
+  ctx.fillStyle = 'rgba(255,255,255,0.16)';
+  for (let x = -span; x < span; x += 140) ctx.fillRect(x, -span, 70, span * 2);
+  ctx.rotate((-90 * Math.PI) / 180);
+  ctx.fillStyle = 'rgba(0,0,0,0.10)';
+  for (let x = -span; x < span; x += 180) ctx.fillRect(x, -span, 100, span * 2);
+  ctx.restore();
+}
+paintScene();
+let scenePaintTimer = 0;
+window.addEventListener('resize', () => {
+  window.clearTimeout(scenePaintTimer);
+  scenePaintTimer = window.setTimeout(paintScene, 150);
+});
+
 // One call wires up every [data-liquid-glass] element (and binds the pointer
 // tilt / press behaviour to every .lg-interactive). `registry.instances` is the
 // element→LiquidGlass map the morph helpers below reach into.

@@ -483,9 +483,14 @@ new LiquidGlass(glassEl, { backdropSource: '#scene' }); // or an HTMLElement
   real backdrop is already refracted, live, for free).
 - **Firefox** → `-moz-element(#scene)` paints the **live** scene as the lens
   source; a regular `filter:` then displaces it. Live, no clone.
-- **Safari / others** → a **DOM clone** of the scene, kept position-synced to
-  where the scene really is (re-aligned on scroll & resize), displaced the same
-  way. The clone is `inert` + `aria-hidden` with ids stripped.
+- **Safari / others** → a single shared **WebGL** canvas refracts the scene for
+  every box on the GPU (a fragment shader samples the scene texture with the same
+  displacement map, plus chromatic aberration, frost and specular). Scrolling
+  only updates per-box uniforms — no DOM clones, no per-frame layout — so it
+  stays smooth. This needs the scene to be a **`<canvas>`/`<img>`/`<video>`**
+  (those upload to a GPU texture taint-free; a DOM element would taint it). If
+  WebGL2 or an uploadable scene isn't available it falls back to a position-
+  synced DOM clone (`inert` + `aria-hidden`, ids stripped).
 
 Constraints: the scene must be a *separate* element (not the glass or an
 ancestor — that would recurse / paint-loop). The clone is a static copy, so
