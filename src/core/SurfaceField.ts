@@ -42,7 +42,7 @@ export interface SurfaceParams {
 const GRAD_CLAMP = 8.5;
 /** Edge concentration: lower values let the whole body behave more like a
  * convex lens; higher values push the bend into a quiet rim-only treatment. */
-const LENS_K = 1.55;
+const LENS_K = 1.15;
 
 export interface SurfaceField {
   /** Signed distance inside from the nearest edge, in device px (0 outside). */
