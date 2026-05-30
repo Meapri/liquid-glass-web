@@ -237,6 +237,19 @@ const MATERIAL_PRESET: Record<Exclude<LiquidGlassMaterialPreset, 'auto'>, Preset
 const IS_CHROMIUM =
   typeof navigator !== 'undefined' && /Chrome\//.test(navigator.userAgent);
 
+/**
+ * Relative luminance (0..1) of a CSS `backgroundColor`, or null when it's
+ * effectively transparent (a gradient/image-only layer we can't read).
+ */
+function parseBgLuminance(color: string): number | null {
+  const m = color.match(/rgba?\(([^)]+)\)/);
+  if (!m) return null;
+  const p = m[1].split(',').map((s) => parseFloat(s));
+  const a = p.length > 3 ? p[3] : 1;
+  if (!(a >= 0.5)) return null; // transparent → can't tell what's behind
+  return (0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2]) / 255;
+}
+
 /** Cheap device-class heuristic for quality:'auto'. */
 function autoQuality(): Exclude<LiquidGlassQuality, 'auto'> {
   if (typeof navigator === 'undefined') return 'balanced';
@@ -268,6 +281,8 @@ export class LiquidGlass {
   private suspended = false;
   private usesFallback = false;
   private regenTimer: number | null = null;
+  /** Backdrop-aware shadow multiplier (1 = neutral; >1 darker backdrop). */
+  private shadowAdapt = 1;
 
   constructor(element: HTMLElement, options: LiquidGlassOptions = {}) {
     this.element = element;
@@ -332,6 +347,13 @@ export class LiquidGlass {
     // Pointer-tracked edge light for every glass element (core, not just
     // .lg-interactive). The CSS `.liquid-glass::after` consumes the vars.
     if (!this.usesFallback) registerPointerLight(this.element);
+
+    // Sample the backdrop once laid out to set the content-aware shadow.
+    if (!this.usesFallback && typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => {
+        if (!this.destroyed) this.updateShadowAdapt();
+      });
+    }
   }
 
   update(partial: LiquidGlassOptions): void {
@@ -659,6 +681,7 @@ export class LiquidGlass {
         });
         this.filter.updateSpecular(specUrl, this.currentWidth, this.currentHeight);
       }
+      this.updateShadowAdapt();
     }, RESIZE_DEBOUNCE_MS);
   }
 
@@ -670,9 +693,13 @@ export class LiquidGlass {
   }
 
   /**
-   * Scheme-aware rim + inner glow + float shadow. The inset layers (hairline,
-   * top sheen, bottom shade) are fixed, but the outer float shadow scales with
-   * the profile's `shadow` — larger glass "casts deeper, richer shadows."
+   * The edge is defined OPTICALLY — by lensing and the light-responsive specular
+   * rim ("Liquid Glass defines itself through lensing … bends, shapes and
+   * concentrates light"), NOT by a drawn white outline. So the inset border is
+   * just a whisper baseline (so a bare element still reads over a flat backdrop),
+   * plus a profile-scaled float shadow that is also backdrop-aware: Apple's glass
+   * "is aware of what's behind it and increases the opacity of its shadow when it
+   * is over text … lowers it over a solid light background."
    */
   private applyEdges(): void {
     if (!this.options.edges) return;
@@ -680,17 +707,65 @@ export class LiquidGlass {
     const s = this.opticalTuning().shadow;
     const oy = (4 * s).toFixed(1);
     const blur = (12 * s).toFixed(1);
-    // Offset/blur scale linearly; opacity grows more gently and is capped so big
-    // panels read as deep, not heavy.
-    const baseAlpha = dark ? 0.24 : 0.09;
-    const alpha = Math.min(dark ? 0.4 : 0.18, baseAlpha * Math.pow(s, 0.7)).toFixed(3);
+    // Depth scales with the profile; opacity also follows the backdrop (more over
+    // dark/busy content, less over a solid light background) via shadowAdapt.
+    const baseAlpha = dark ? 0.22 : 0.085;
+    const alpha = Math.min(
+      dark ? 0.44 : 0.2,
+      baseAlpha * Math.pow(s, 0.7) * this.shadowAdapt
+    ).toFixed(3);
     const float = dark
       ? `0 ${oy}px ${blur}px rgba(0, 0, 0, ${alpha})`
-      : `0 ${oy}px ${blur}px rgba(31, 38, 135, ${alpha})`;
+      : `0 ${oy}px ${blur}px rgba(20, 24, 46, ${alpha})`;
+    // Whisper-thin baseline border + a faint top sheen — the bright edge itself
+    // comes from the baked specular rim and the pointer-tracked light.
     const inset = dark
-      ? 'inset 0 0 0 0.5px rgba(255,255,255,0.09), inset 0 2px 4px rgba(255,255,255,0.16), inset 0 -3px 6px rgba(0,0,0,0.18)'
-      : 'inset 0 0 0 0.5px rgba(255,255,255,0.16), inset 0 2px 4px rgba(255,255,255,0.32), inset 0 -3px 6px rgba(0,0,0,0.06)';
+      ? 'inset 0 0 0 0.5px rgba(255,255,255,0.07), inset 0 1.5px 2px rgba(255,255,255,0.1), inset 0 -3px 6px rgba(0,0,0,0.16)'
+      : 'inset 0 0 0 0.5px rgba(255,255,255,0.1), inset 0 1.5px 2px rgba(255,255,255,0.18), inset 0 -3px 6px rgba(0,0,0,0.06)';
     this.element.style.boxShadow = `${inset}, ${float}`;
+  }
+
+  /**
+   * Approximate Apple's content-aware shadow: sample the backdrop luminance
+   * behind the element and bias the shadow opacity — darker/busier content casts
+   * a deeper shadow for separation, a solid light background a fainter one.
+   * Resolvable solid backgrounds adapt; gradients/images fall back to neutral.
+   */
+  private updateShadowAdapt(): void {
+    if (!this.options.edges || this.usesFallback) return;
+    const lum = this.sampleBackdropLuminance();
+    const next = lum == null ? 1 : 1.4 - lum * 0.8; // dark→1.4, light→0.6
+    if (Math.abs(next - this.shadowAdapt) < 0.03) return;
+    this.shadowAdapt = next;
+    this.applyEdges();
+  }
+
+  private sampleBackdropLuminance(): number | null {
+    const r = this.element.getBoundingClientRect();
+    if (r.width === 0 || r.height === 0) return null;
+    const pts: [number, number][] = [
+      [r.left + r.width / 2, r.top + r.height / 2],
+      [r.left + 8, r.top + 8],
+      [r.right - 8, r.bottom - 8],
+    ];
+    const prevPE = this.element.style.pointerEvents;
+    this.element.style.pointerEvents = 'none';
+    let total = 0;
+    let n = 0;
+    for (const [x, y] of pts) {
+      if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) continue;
+      for (const el of document.elementsFromPoint(x, y)) {
+        if (el === this.element || this.element.contains(el)) continue;
+        const lum = parseBgLuminance(getComputedStyle(el).backgroundColor);
+        if (lum != null) {
+          total += lum;
+          n++;
+          break;
+        }
+      }
+    }
+    this.element.style.pointerEvents = prevPE;
+    return n ? total / n : null;
   }
 
   private variantTint(): string {
