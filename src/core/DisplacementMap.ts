@@ -49,7 +49,14 @@ const RIM_GAIN = 1.7;
 export function generateDisplacementMap(
   params: DisplacementMapParams
 ): DisplacementMapResult {
-  const dpr = params.pixelRatio;
+  // Anti-aliasing: at a low output pixel-ratio (e.g. 0.4 on mobile, or a
+  // perf-reduced desktop), a hard-sampled map upscales into visible stair-steps
+  // along the lensing edge. So we render at a higher internal resolution and
+  // downscale with the browser's high-quality filter — the stored texture stays
+  // small (cheap to sample at runtime) but is cleanly anti-aliased.
+  const outDpr = params.pixelRatio;
+  const ss = outDpr < 0.9 ? 2 : 1;
+  const dpr = outDpr * ss;
   const w = Math.max(1, Math.round(params.width * dpr));
   const h = Math.max(1, Math.round(params.height * dpr));
   const r = Math.max(0, Math.min(Math.min(w, h) / 2, params.radius * dpr));
@@ -128,8 +135,9 @@ export function generateDisplacementMap(
 
   ctx.putImageData(img, 0, 0);
 
-  const url =
-    canvas instanceof HTMLCanvasElement
+  const url = ss > 1
+    ? downscaleToDataURL(canvas, totalW, totalH, ss)
+    : canvas instanceof HTMLCanvasElement
       ? canvas.toDataURL('image/webp', 1.0)
       : offscreenToDataURL(canvas as OffscreenCanvas);
 
@@ -139,6 +147,25 @@ export function generateDisplacementMap(
     totalWidth: totalW / dpr,
     totalHeight: totalH / dpr,
   };
+}
+
+/** Downsample a supersampled map to 1/ss with the browser's filter (anti-alias)
+ * and encode it. The result texture is small but smooth. */
+function downscaleToDataURL(
+  src: HTMLCanvasElement | OffscreenCanvas,
+  srcW: number,
+  srcH: number,
+  ss: number
+): string {
+  const dstW = Math.max(1, Math.round(srcW / ss));
+  const dstH = Math.max(1, Math.round(srcH / ss));
+  const tmp = scratchHTMLCanvas('disp-ds', dstW, dstH);
+  const ctx = tmp.getContext('2d', { willReadFrequently: true })!;
+  ctx.clearRect(0, 0, dstW, dstH);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(src as unknown as CanvasImageSource, 0, 0, srcW, srcH, 0, 0, dstW, dstH);
+  return tmp.toDataURL('image/webp', 1.0);
 }
 
 function offscreenToDataURL(canvas: OffscreenCanvas): string {

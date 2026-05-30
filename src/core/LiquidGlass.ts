@@ -1053,21 +1053,23 @@ export class LiquidGlass {
    */
   private displacementDpr(): number {
     const short = Math.min(this.currentWidth, this.currentHeight);
-    const factor = short > 220 ? 0.45 : 0.6;
+    const factor = short > 220 ? 0.3 : 0.38;
+    // The lens is a smooth field and the maps are supersampled+downscaled (so
+    // low output resolutions stay anti-aliased), letting us render the texture
+    // small — ~0.6–0.76× on desktop, capped to ~0.4× on mobile — which cuts the
+    // per-frame backdrop-filter sampling cost with no visible stair-stepping.
     const dpr = this.options.mapPixelRatio * factor;
-    // The lens is a smooth field that upscales cleanly, so on mobile we render it
-    // at ~0.4× — a big cut in per-frame filter sampling with no visible loss.
     return IS_MOBILE ? Math.min(dpr, 0.4) : dpr;
   }
 
   /**
-   * The specular PNG stays full resolution on desktop (razor-sharp rim), but is
-   * the biggest texture, so on mobile it's capped to 1× to halve sampling.
+   * The specular rim is supersampled at generation time, so it stays razor-sharp
+   * even though the stored texture is smaller now (~1.3× desktop, ~1× mobile) —
+   * roughly a third less texture to sample than the old full 2×.
    */
   private specularDpr(): number {
-    return IS_MOBILE
-      ? Math.min(this.options.mapPixelRatio, 1)
-      : this.options.mapPixelRatio;
+    const dpr = this.options.mapPixelRatio * 0.65;
+    return IS_MOBILE ? Math.min(dpr, 1) : dpr;
   }
 
   private installFilter(): void {
