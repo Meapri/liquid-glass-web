@@ -327,6 +327,8 @@ export class LiquidGlass {
   /** Primary GPU refraction (shared WebGL canvas) is active for this element. */
   private usesGpu = false;
   private gpuHandle: { destroy: () => void; refresh: () => void } | null = null;
+  /** Tracks devicePixelRatio so a browser-zoom / monitor switch re-bakes maps. */
+  private lastDpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
   private regenTimer: number | null = null;
   /** Backdrop-aware shadow multiplier (1 = neutral; >1 darker backdrop). */
   private shadowAdapt = 1;
@@ -377,8 +379,11 @@ export class LiquidGlass {
       this.installFilter();
     }
 
-    // Size tracking (the GPU path needs it too; the plain CSS fallback doesn't).
-    if (!this.usesFallback || this.usesGpu) {
+    // Size tracking for EVERY path (native, frost fallback, GPU) — so the glass
+    // stays correct through responsive layouts, window resizes, orientation
+    // changes, and being shown after starting at zero size. ResizeObserver fires
+    // on the element's own box change, which covers all of the above.
+    if (typeof ResizeObserver !== 'undefined') {
       this.resizeObserver = new ResizeObserver((entries) => {
         for (const entry of entries) {
           const box = entry.borderBoxSize?.[0];
@@ -394,12 +399,16 @@ export class LiquidGlass {
           if (this.options.applyRadius) {
             this.element.style.borderRadius = `${this.computedRadius()}px`;
           }
-          if (this.usesGpu) this.gpuHandle?.refresh();
-          else this.scheduleRegen();
+          this.scheduleRegen();
         }
       });
       this.resizeObserver.observe(element, { box: 'border-box' });
     }
+
+    // Browser zoom / moving to a different-DPR display changes devicePixelRatio
+    // without changing the element's CSS size, so ResizeObserver won't catch it —
+    // re-bake the maps at the new pixel density when that happens.
+    window.addEventListener('resize', this.onWindowResize, { passive: true });
 
     if (this.options.scheme === 'auto' && typeof window.matchMedia === 'function') {
       this.mqlScheme = window.matchMedia('(prefers-color-scheme: dark)');
@@ -573,6 +582,7 @@ export class LiquidGlass {
       this.mqlScheme.removeEventListener('change', this.mqlListener);
     }
     window.removeEventListener('scroll', this.onBackdropScroll, { capture: true } as EventListenerOptions);
+    window.removeEventListener('resize', this.onWindowResize);
     if (this.scrollRaf) cancelAnimationFrame(this.scrollRaf);
     this.removeFallbackFx();
     this.teardownGpu();
@@ -1019,12 +1029,32 @@ export class LiquidGlass {
     }
   }
 
+  /**
+   * Re-derive everything size-dependent after a resize (window/orientation/DPR/
+   * layout). Debounced and routed by the active path so a resizing element stays
+   * correct in every environment:
+   *   • GPU   → refresh the shared-canvas box (new map at the new size);
+   *   • frost → re-apply the profiled CSS blur + rebuild the specular overlay;
+   *   • native→ regenerate the displacement/specular maps and live filter attrs.
+   */
   private scheduleRegen(): void {
-    if (this.destroyed || this.usesFallback) return;
+    if (this.destroyed) return;
     if (this.regenTimer !== null) clearTimeout(this.regenTimer);
     this.regenTimer = window.setTimeout(() => {
       this.regenTimer = null;
-      if (this.destroyed || !this.filter) return;
+      if (this.destroyed || this.suspended) return;
+
+      if (this.usesGpu) {
+        this.gpuHandle?.refresh();
+        return;
+      }
+      if (this.usesFallback) {
+        // Re-apply the size-scaled frost (and rebuild the specular overlay).
+        this.applyFallback();
+        this.adaptToBackdrop();
+        return;
+      }
+      if (!this.filter) return;
       const disp = getDisplacementMap({
         width: this.currentWidth,
         height: this.currentHeight,
@@ -1136,6 +1166,13 @@ export class LiquidGlass {
       }
     }
   }
+
+  private onWindowResize = (): void => {
+    const dpr = window.devicePixelRatio || 1;
+    if (Math.abs(dpr - this.lastDpr) < 0.01) return; // size changes handled by ResizeObserver
+    this.lastDpr = dpr;
+    this.scheduleRegen();
+  };
 
   private onBackdropScroll = (): void => {
     if (this.scrollRaf) return;
