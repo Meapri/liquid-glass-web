@@ -1,22 +1,59 @@
 export type LiquidGlassVariant = 'regular' | 'clear' | 'tinted';
 export type LiquidGlassScheme = 'light' | 'dark' | 'auto';
 export type LiquidGlassQuality = 'high' | 'balanced' | 'low' | 'auto';
+/**
+ * Semantic optical context for the glass. Apple doesn't expose numeric blur or
+ * refraction constants; system components adapt the material based on role,
+ * size, interaction, and legibility needs. These profiles encode that behavior
+ * for the web renderer.
+ */
+export type LiquidGlassOpticalProfile =
+  | 'auto'
+  | 'bar'
+  | 'control'
+  | 'card'
+  | 'panel'
+  | 'selection';
+
+/**
+ * Material intensity preset layered on top of the semantic profile. `auto`
+ * chooses a good default for the resolved profile.
+ */
+export type LiquidGlassMaterialPreset = 'auto' | 'subtle' | 'balanced' | 'vivid' | 'dramatic';
 
 export interface LiquidGlassOptions {
   /** Corner radius in px. 'pill' = height/2. 'auto' reads current computed border-radius. Default: 'auto'. */
   radius?: number | 'auto' | 'pill';
-  /** Lens depth (glass "thickness") in px — deeper ⇒ more pronounced edge lensing. Default: 30. */
+  /** Reference lens depth in px. The selected profile scales this value. Default: 44. */
   thickness?: number;
-  /** Max edge refraction displacement in px (capped to ½ the short side). Default: 44. */
+  /** Reference edge refraction in px. The selected profile scales and caps this value. Default: 46. */
   refraction?: number;
   /** Chromatic dispersion (0–1). Pulls R/G/B apart at the edges. Default: 0.03. */
   chromaticAberration?: number;
-  /** Backdrop blur in px (the "frosted" amount). Default: per variant (regular 10, clear 3, tinted 14). */
+  /** Reference backdrop blur in px. The selected variant and profile scale this value. */
   blur?: number;
   /** Saturation boost as %. 100 = neutral. Default: 150. */
   saturation?: number;
-  /** Variant — controls baseline tint and behavior. Default: 'regular'. */
+  /**
+   * Variant. Apple defines Regular and Clear; `tinted` is kept as a legacy
+   * compatibility shortcut. Prefer `variant: 'regular'` plus `tint`.
+   * Default: 'regular'.
+   */
   variant?: LiquidGlassVariant;
+  /**
+   * Optical profile. Keep 'auto' for Apple-style context adaptation: navigation
+   * bars stay visually quiet, compact controls get stronger lensing, and larger
+   * panels prioritize legibility. Explicit profiles are useful for custom
+   * controls.
+   * Default: 'auto'.
+   */
+  profile?: LiquidGlassOpticalProfile;
+  /**
+   * Material intensity preset. `auto` lets the engine choose based on the
+   * resolved profile; use explicit presets for product-specific art direction.
+   * Default: 'auto'.
+   */
+  preset?: LiquidGlassMaterialPreset;
   /** Color scheme. Default: 'auto'. */
   scheme?: LiquidGlassScheme;
   /** Optional explicit tint, overrides variant. CSS color. */
@@ -91,6 +128,8 @@ export interface ResolvedOptions {
   blur: number;
   saturation: number;
   variant: LiquidGlassVariant;
+  profile: LiquidGlassOpticalProfile;
+  preset: LiquidGlassMaterialPreset;
   scheme: LiquidGlassScheme;
   tint: string | null;
   specular: boolean;
@@ -104,4 +143,22 @@ export interface ResolvedOptions {
   root: Document | ShadowRoot | null;
   fallbackFilter: string;
   respectReducedMotion: boolean;
+}
+
+export interface LiquidGlassResolvedState {
+  profile: Exclude<LiquidGlassOpticalProfile, 'auto'>;
+  preset: Exclude<LiquidGlassMaterialPreset, 'auto'>;
+  variant: LiquidGlassVariant;
+  scheme: 'light' | 'dark';
+  radius: number;
+  thickness: number;
+  refraction: number;
+  blur: number;
+  saturation: number;
+  specularIntensity: number;
+  tint: string;
+  usesFallback: boolean;
+  quality: Exclude<LiquidGlassQuality, 'auto'>;
+  width: number;
+  height: number;
 }

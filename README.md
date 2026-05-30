@@ -8,7 +8,7 @@ is composited by the browser GPU pipeline.
 
 ## Approach
 
-- **Edge-concentrated lensing** (Snell's law), the way Apple describes Liquid
+- **Context-adaptive lensing** (Snell's law), the way Apple describes Liquid
   Glass — it *"dynamically bends, shapes, and concentrates light in real time"*
   with *"responsive lensing along its edges"* (Meet Liquid Glass, WWDC25). The
   rim is a **convex roundover** — a quarter-ellipse `h = B·√(1 − (1 − t)²)` over a
@@ -27,6 +27,13 @@ is composited by the browser GPU pipeline.
   blurred *before* it's bent so refraction over text stays clean.
 - **Padded displacement canvas** (`±refraction` px on each side) so the rim
   can sample real backdrop beyond the element box without clipping.
+- **Liquid Glass-style optical profiles** — the best result is not one global
+  blur/refraction value. This library ships semantic profiles tuned for a vivid
+  web Liquid Glass look: `bar` keeps navigation and toolbars dissolved but
+  readable, `control` gives buttons and sliders stronger lensing,
+  `selection` lifts active tab/segmented capsules, and `panel`/`card` prioritize
+  legibility on larger surfaces. `profile: 'auto'` infers from semantic tags,
+  ARIA roles, size, and aspect ratio.
 - **Three-pass chromatic aberration** — R / G / B channels run through
   feDisplacementMap at slightly different scales (blue refracts more than red,
   matching glass physics).
@@ -38,11 +45,10 @@ is composited by the browser GPU pipeline.
   on the opposite edge. Screen-blended inside the filter — no per-frame JS. It
   hugs the crisp edge so the glass reads as a defined shape, while the refraction
   lens stays a smooth bend — the clear interior emits no light.
-- **Flat edge treatment** — a single faint scheme-aware hairline (`inset 0 0 0
-  0.5px`) so the edge still reads over flat backdrops. No drop shadow and no
-  inner top-lip glow — those make the glass look like a raised, embossed button;
-  Liquid Glass sits flush *on* the content. The dimensional edge is carried
-  optically by the lensing + the crisp specular line, not by a drawn bevel.
+- **Context-aware edge treatment** — bars use a soft dissolved hairline, while
+  compact controls and selections keep more visible glass border artwork and
+  gloss. The profiles are tuned so the material reads as glass without making
+  every surface look like the same button.
 - **Pointer-tracked edge light (core, all glass)** — Apple's environment light
   "travels around the material, defining its silhouette" and reacts as you
   approach. A single shared `PointerField` (one rAF-coalesced `pointermove`)
@@ -80,11 +86,12 @@ npm run dev   # demo at http://localhost:5173
 ```ts
 import { LiquidGlass, LiquidInteractive } from './src';
 
-// Initialize core refraction engine (Apple-standard defaults shown)
+// Initialize the core refraction engine. Defaults are profile-aware.
 new LiquidGlass(document.querySelector('.tab-bar')!, {
   radius: 'pill',
-  thickness: 30,    // lens depth
-  refraction: 44,   // edge lensing strength
+  profile: 'bar',   // dissolved navigation material
+  thickness: 44,    // reference lens depth; profile scales it
+  refraction: 46,   // reference lensing; profile scales and caps it
   variant: 'regular',
 });
 
@@ -97,14 +104,16 @@ LiquidInteractive.initAll();
 | option | default | meaning |
 | --- | --- | --- |
 | `radius` | `'auto'` | px, `'pill'`, or `'auto'` (reads computed border-radius) |
-| `thickness` | `30` | lens depth (glass "thickness") in px — deeper ⇒ more pronounced edge lensing (Apple: thicker material lenses more). Scales the dome depth. |
-| `refraction` | `44` | max edge displacement in px — overall lensing strength (auto-capped to ½ the short side so small controls stay coherent) |
+| `thickness` | `44` | reference lens depth in px; the selected profile scales it. Deeper ⇒ more pronounced lensing when appropriate. |
+| `refraction` | `46` | reference displacement in px; the selected profile scales it and caps it to the element size. |
 | `chromaticAberration` | `0.03` | 0–1; subtle RGB fringing at the rim (kept low so the body stays clean) |
-| `blur` | per-variant | backdrop frost stdDeviation, applied before refraction; default by variant (`regular` 10, `clear` 3, `tinted` 14). Auto-capped to ~14% of the short side so thin bars/toolbars aren't over-frosted (an absolute blur looks far stronger on a 52px nav than a 200px panel). |
+| `blur` | per-variant | reference backdrop frost stdDeviation, applied before refraction; default by variant (`regular` 7, `clear` 3, legacy `tinted` 14). Profiles and size scale this down for bars and compact controls. |
 | `saturation` | `150` | % saturation applied after displacement (Apple keeps the backdrop close to neutral, not over-vivid) |
-| `variant` | `'regular'` | `'regular'` (frosted, legible) \| `'clear'` (most transparent, for bold content) \| `'tinted'` — sets tint and the default frost |
+| `variant` | `'regular'` | `'regular'` \| `'clear'`; legacy `'tinted'` remains for compatibility. Apple guidance maps prominence through `tint`, not an extra variant. |
+| `profile` | `'auto'` | semantic optical context: `'auto'`, `'bar'`, `'control'`, `'card'`, `'panel'`, or `'selection'`. `auto` uses element semantics and geometry. |
+| `preset` | `'auto'` | material intensity: `'auto'`, `'subtle'`, `'balanced'`, `'vivid'`, or `'dramatic'`. `auto` chooses `vivid` for controls/selections and `balanced` elsewhere. |
 | `scheme` | `'auto'` | `'light'` \| `'dark'` \| `'auto'` |
-| `tint` | — | explicit CSS color, overrides variant |
+| `tint` | — | explicit CSS color for prominence; preferred over `variant:'tinted'` |
 | `specular` | `true` | bake the geometry-driven edge light |
 | `specularIntensity` | `0.5` | 0–1 |
 | `edges` | `true` | inline glass edge treatment (scheme-aware): bright rim hairline, inner top glow, bottom lip, soft float shadow. `false` to style `box-shadow` yourself |
@@ -113,15 +122,64 @@ LiquidInteractive.initAll();
 | `lazy` | `false` | defer building the filter until the element scrolls into view (IntersectionObserver) |
 | `lazyMargin` | `'200px'` | root-margin for the lazy observer |
 | `root` | auto | tree scope for the shared `<svg defs>`; auto-detected from `getRootNode()` so it works inside a Shadow DOM |
-| `fallbackFilter` | `'blur(12px) saturate(1.6)'` | CSS `backdrop-filter` used on non-Chromium / `quality:'low'` / reduced-transparency |
+| `fallbackFilter` | profile-aware | CSS `backdrop-filter` used on non-Chromium / `quality:'low'` / reduced-transparency. Leave unset to derive blur/saturation from the resolved profile; pass a string to override. |
 | `respectReducedMotion` | `true` | fall back to the cheap filter when `prefers-reduced-transparency` is set |
 
-`update(partial)` patches options live — `blur`, `saturation`, `tint`, `scheme`
-and `variant` are applied as live filter/CSS attributes and never rebuild the
-maps; only `radius`, `thickness`, `specularIntensity` and a changed refraction
-padding regenerate them. `suspend()` / `resume()` cheaply detach / re-attach the
-GPU filter for show/hide (e.g. a tooltip), keeping the built maps.
+`update(partial)` patches options live — `blur`, `saturation`, `tint`, `scheme`,
+`variant`, and refraction scale are applied as live filter/CSS attributes when
+possible. Map-changing options (`radius`, `thickness`, `profile`, `preset`,
+specular intensity, or refraction padding) regenerate the cached maps.
+`suspend()` /
+`resume()` cheaply detach / re-attach the GPU filter for show/hide.
+
+`glass.resolved` exposes the final engine contract for debugging and design
+system tooling:
+
+```ts
+const glass = new LiquidGlass(el); // profile:'auto', preset:'auto'
+console.log(glass.resolved);
+// {
+//   profile: 'bar',
+//   preset: 'balanced',
+//   blur: 4.13,
+//   refraction: 20.24,
+//   thickness: 16.72,
+//   ...
+// }
+```
+
+### Optical profiles
+
+These profiles are the library's tuned web material presets. They keep Liquid
+Glass expressive without forcing the same blur/refraction amount onto every
+component.
+
+| profile | intended use | behavior |
+| --- | --- | --- |
+| `bar` | headers, nav bars, toolbars, notification bars | stronger blur/dissolve, restrained lensing, soft rim |
+| `control` | independent buttons, switches, sliders, media controls | strongest lensing and gloss; use with bold glyphs/labels |
+| `selection` | selected tab capsules, segmented selections | pronounced floating capsule with medium-high lensing |
+| `card` | compact cards in the floating functional layer | vivid refraction, balanced frost, readable text |
+| `panel` | sheets, menus, sidebars, popovers | more frost and softer lensing for larger readable surfaces |
+| `auto` | default | infers from tag/role first (`button`, `nav`, `toolbar`, `dialog`, `tablist`, etc.), then from size/aspect ratio |
+
+Avoid applying glass to content-layer elements like ordinary article/list cells.
+For controls inside an existing glass surface, use a tint/fill overlay instead
+of a second `LiquidGlass` instance.
 `destroy()` cleans up the filter and styles.
+
+### Material presets
+
+`profile` decides what the element is; `preset` decides how strongly the glass
+reads. Most apps should leave both on `auto`.
+
+| preset | behavior |
+| --- | --- |
+| `subtle` | reduced blur, rim, and lensing for dense/productivity UI |
+| `balanced` | default material strength |
+| `vivid` | more convex lensing, gloss, and blur for controls and playful UI |
+| `dramatic` | strongest look for hero/media surfaces |
+| `auto` | resolves by profile: controls/selections use `vivid`, larger/static surfaces use `balanced` |
 
 ### Quality tiers
 
@@ -157,6 +215,24 @@ instances via `MapCache`, so the cost above is paid only on first appearance at
 a given size. For many instances, set `lazy: true` so off-screen glass builds
 nothing until it scrolls in.
 
+## Testing and fixtures
+
+```bash
+npm test                 # typecheck + auto profile resolver tests
+npm run test:auto-profile
+```
+
+Minimal visual fixtures live in `fixtures/`:
+
+- `fixtures/bar.html`
+- `fixtures/control.html`
+- `fixtures/card.html`
+- `fixtures/panel.html`
+- `fixtures/selection.html`
+
+They are intentionally smaller than the demo and are meant for visual regression
+screenshots or quick manual inspection of each material profile.
+
 ## Use in a Chrome extension
 
 The engine is framework-agnostic and has no `chrome.*` dependencies, so it drops
@@ -189,16 +265,14 @@ glass.resume();   // shown again → instant
 
 ## Browser support
 
-Chromium only — SVG filters inside `backdrop-filter` are unsupported in Safari
-and Firefox. Those (and `quality: 'low'`, or `prefers-reduced-transparency`)
-fall back to the plain CSS `fallbackFilter` (`blur(12px) saturate(1.6)` by
-default) automatically.
+Chromium only for real SVG displacement inside `backdrop-filter`. Safari,
+Firefox, `quality: 'low'`, and `prefers-reduced-transparency` fall back to a
+profile-aware CSS `backdrop-filter` derived from the resolved blur/saturation.
 
 ## References
 
-The optical model here is taken **only from Apple's official material** — the
-lensing, geometry-driven highlights, edge behaviour and Regular/Clear variants
-are reproduced from these sources:
+The optical model is informed by Apple's public Liquid Glass material, then
+tuned for a practical web engine:
 
 - [Meet Liquid Glass — WWDC25](https://developer.apple.com/videos/play/wwdc2025/219/)
   — the canonical description of lensing, environment lighting, silhouette

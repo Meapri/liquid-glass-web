@@ -21,21 +21,31 @@
  *   glass.destroy();
  */
 
-import type { LiquidGlassOptions, ResolvedOptions, LiquidGlassQuality, LiquidGlassVariant } from './types';
+import type {
+  LiquidGlassOptions,
+  LiquidGlassMaterialPreset,
+  LiquidGlassOpticalProfile,
+  LiquidGlassResolvedState,
+  ResolvedOptions,
+  LiquidGlassQuality,
+  LiquidGlassVariant,
+} from './types';
+import { resolveLiquidGlassAutoProfile } from './AutoProfile';
 import { FilterChain } from './FilterChain';
 import { getDisplacementMap, getSpecularMap } from './MapCache';
 import { registerPointerLight, unregisterPointerLight } from './PointerField';
 
 const VARIANT_TINT: Record<LiquidGlassVariant, { light: string; dark: string }> = {
   regular: {
-    light: 'rgba(255, 255, 255, 0.12)', // light, transparent — content shines through
-    dark: 'rgba(0, 0, 0, 0.18)',
+    light: 'rgba(255, 255, 255, 0.14)', // light, transparent — content shines through
+    dark: 'rgba(0, 0, 0, 0.2)',
   },
   clear: {
     light: 'rgba(255, 255, 255, 0.04)',
     dark: 'rgba(0, 0, 0, 0.04)',
   },
   tinted: {
+    // Legacy shortcut. Official Apple guidance uses Regular/Clear plus tinting.
     light: 'rgba(255, 255, 255, 0.32)',
     dark: 'rgba(30, 30, 36, 0.42)',
   },
@@ -45,9 +55,9 @@ const VARIANT_TINT: Record<LiquidGlassVariant, { light: string; dark: string }> 
  * Default frost per variant when `blur` isn't given. Liquid Glass blurs the
  * backdrop *before* refracting it, so sharp content (text, edges) is smoothed
  * into colour first and the lens bends a clean image — without enough blur,
- * strong refraction over text looks busy. `regular` is well-frosted for use
- * over arbitrary content; `clear` stays more transparent for bold media;
- * `tinted` a touch more frosted. Explicit `blur` always wins.
+ * strong refraction over text looks busy. `regular` is the default system-like
+ * variant; `clear` stays more transparent for bold media; `tinted` is retained
+ * as a compatibility alias for regular+tint. Explicit `blur` always wins.
  */
 const VARIANT_BLUR: Record<LiquidGlassVariant, number> = {
   regular: 7, // light frost — clearer so the refraction/lensing reads like real glass
@@ -81,6 +91,8 @@ const DEFAULT_OPTIONS: ResolvedOptions = {
   blur: 7, // light frost, backdrop reads through so the lensing is visible
   saturation: 150, // gentle lift, backdrop stays close to natural
   variant: 'regular',
+  profile: 'auto',
+  preset: 'auto',
   scheme: 'auto',
   tint: null,
   specular: true,
@@ -99,6 +111,124 @@ const DEFAULT_OPTIONS: ResolvedOptions = {
 /** rAF-debounced regen so dragging/resizing doesn't run the pixel loop hot. */
 const RESIZE_DEBOUNCE_MS = 80;
 
+/**
+ * A regular content card in the demo is roughly 200px tall; use that as the
+ * optical reference for configured blur values. Short bars keep the same
+ * material clarity by scaling the absolute blur down from this baseline.
+ */
+const DEFAULT_SURFACE_REFERENCE_SHORT_SIDE = 200;
+const DEFAULT_MIN_SIZE_BLUR_SCALE = 0.32;
+
+interface OpticalTuning {
+  /** Scales the configured optical depth. */
+  thickness: number;
+  /** Scales the configured displacement. */
+  refraction: number;
+  /** Scales the configured frost. */
+  blur: number;
+  /** Scales the baked geometry highlight. */
+  specular: number;
+  /**
+   * Size used as the point where the configured blur reaches full strength.
+   * Smaller controls proportionally reduce frost so short bars don't look
+   * heavier than larger surfaces.
+   */
+  blurReferenceShortSide: number;
+  /**
+   * Minimum size scale for blur. Bars need a higher floor: Apple-style
+   * navigation materials dissolve moving content for legibility even when
+   * their vertical footprint is short.
+   */
+  minBlurScale: number;
+}
+
+interface PresetTuning {
+  thickness: number;
+  refraction: number;
+  blur: number;
+  specular: number;
+}
+
+const OPTICAL_PROFILE: Record<Exclude<LiquidGlassOpticalProfile, 'auto'>, OpticalTuning> = {
+  // Navigation bars and headers are part of the top functional layer, but Apple
+  // keeps them visually quiet so content remains the hero. This should feel
+  // closer to a scroll-edge/navigation material than a magnifying control.
+  bar: {
+    thickness: 0.38,
+    refraction: 0.22,
+    blur: 0.82,
+    specular: 0.38,
+    blurReferenceShortSide: 160,
+    minBlurScale: 0.72,
+  },
+  // Buttons, switches, sliders, and media controls can flex into the glass more
+  // visibly because their footprint is small and their symbols are bold.
+  control: {
+    thickness: 1.12,
+    refraction: 1.16,
+    blur: 0.78,
+    specular: 1.16,
+    blurReferenceShortSide: 160,
+    minBlurScale: 0.42,
+  },
+  // Cards need separation without competing with the content layer.
+  card: {
+    thickness: 1,
+    refraction: 0.96,
+    blur: 0.96,
+    specular: 1,
+    blurReferenceShortSide: DEFAULT_SURFACE_REFERENCE_SHORT_SIDE,
+    minBlurScale: DEFAULT_MIN_SIZE_BLUR_SCALE,
+  },
+  // Large sidebars, sheets, menus, and panels adapt gently; too much lensing
+  // across a large area becomes distracting.
+  panel: {
+    thickness: 0.86,
+    refraction: 0.68,
+    blur: 1.08,
+    specular: 0.86,
+    blurReferenceShortSide: 240,
+    minBlurScale: 0.48,
+  },
+  // Selected capsules should feel lifted from the same plane, but not become a
+  // separate glass-on-glass object.
+  selection: {
+    thickness: 0.94,
+    refraction: 0.82,
+    blur: 0.9,
+    specular: 1,
+    blurReferenceShortSide: 160,
+    minBlurScale: 0.5,
+  },
+};
+
+const MATERIAL_PRESET: Record<Exclude<LiquidGlassMaterialPreset, 'auto'>, PresetTuning> = {
+  subtle: {
+    thickness: 0.82,
+    refraction: 0.78,
+    blur: 0.82,
+    specular: 0.78,
+  },
+  balanced: {
+    thickness: 1,
+    refraction: 1,
+    blur: 1,
+    specular: 1,
+  },
+  vivid: {
+    thickness: 1.08,
+    refraction: 1.12,
+    blur: 1.08,
+    specular: 1.14,
+  },
+  dramatic: {
+    thickness: 1.18,
+    refraction: 1.28,
+    blur: 1.16,
+    specular: 1.28,
+  },
+};
+
 /** SVG-in-backdrop-filter only works on Chromium. */
 const IS_CHROMIUM =
   typeof navigator !== 'undefined' && /Chrome\//.test(navigator.userAgent);
@@ -113,6 +243,10 @@ function autoQuality(): Exclude<LiquidGlassQuality, 'auto'> {
 }
 
 type WebkitStyle = CSSStyleDeclaration & { webkitBackdropFilter?: string };
+
+function roundCss(value: number): string {
+  return String(Math.round(value * 1000) / 1000);
+}
 
 export class LiquidGlass {
   readonly element: HTMLElement;
@@ -231,8 +365,18 @@ export class LiquidGlass {
     const mapsChanged =
       prev.radius !== this.options.radius ||
       prev.thickness !== this.options.thickness ||
+      prev.profile !== this.options.profile ||
+      prev.preset !== this.options.preset ||
       prev.specularIntensity !== this.options.specularIntensity ||
-      Math.max(8, Math.ceil(prev.refraction)) !== Math.max(8, Math.ceil(this.options.refraction));
+      Math.max(
+        8,
+        Math.ceil(
+          prev.refraction *
+            this.opticalTuningFor(prev.profile).refraction *
+            this.presetTuningFor(prev.preset, prev.profile).refraction
+        )
+      ) !==
+        Math.max(8, Math.ceil(this.profiledRefraction()));
     if (mapsChanged) this.scheduleRegen();
   }
 
@@ -245,6 +389,28 @@ export class LiquidGlass {
   flexRefraction(px: number | null): void {
     if (!this.filter) return;
     this.filter.updateRefraction(px == null ? this.effectiveRefraction() : Math.max(0, px));
+  }
+
+  get resolved(): LiquidGlassResolvedState {
+    const profile = this.resolveOpticalProfile();
+    const preset = this.resolveMaterialPreset();
+    return {
+      profile,
+      preset,
+      variant: this.options.variant,
+      scheme: this.resolveScheme(),
+      radius: this.computedRadius(),
+      thickness: this.computedThickness(),
+      refraction: this.effectiveRefraction(),
+      blur: this.effectiveBlur(),
+      saturation: this.options.saturation,
+      specularIntensity: this.profiledSpecularIntensity(),
+      tint: this.options.tint ?? this.variantTint(),
+      usesFallback: this.usesFallback,
+      quality: this.quality,
+      width: this.currentWidth,
+      height: this.currentHeight,
+    };
   }
 
   /** The configured (size-capped) lensing strength in px. */
@@ -316,9 +482,18 @@ export class LiquidGlass {
 
   private applyFallback(): void {
     this.usesFallback = true;
-    const css = this.options.fallbackFilter;
+    const css =
+      this.options.fallbackFilter === DEFAULT_OPTIONS.fallbackFilter
+        ? this.profiledFallbackFilter()
+        : this.options.fallbackFilter;
     this.element.style.backdropFilter = css;
     (this.element.style as WebkitStyle).webkitBackdropFilter = css;
+  }
+
+  private profiledFallbackFilter(): string {
+    const blur = Math.max(4, Math.min(22, this.effectiveBlur() * 1.45));
+    const saturation = Math.max(1, Math.min(2, this.options.saturation / 100));
+    return `blur(${roundCss(blur)}px) saturate(${roundCss(saturation)})`;
   }
 
   private setupLazy(): void {
@@ -364,19 +539,23 @@ export class LiquidGlass {
     // so there is no inner ring to fold; the only fold risk is at the masked
     // perimeter. Cap to a fraction of the short side so small controls stay
     // coherent.
-    const sideCap = Math.min(this.currentWidth, this.currentHeight) * 0.5;
-    return Math.min(this.options.refraction, sideCap);
+    const sideCap = Math.min(this.currentWidth, this.currentHeight) * 0.78;
+    return Math.min(this.profiledRefraction(), sideCap);
   }
 
   /**
-   * Backdrop blur is an absolute stdDeviation, so a fixed value looks far
-   * stronger on a short element (a 52px nav bar) than on a tall panel. Cap it to
-   * ~14% of the short side so thin bars/toolbars get a proportionally lighter
-   * frost and the material reads consistently across sizes.
+   * Backdrop blur is an absolute stdDeviation, so a fixed value looks stronger
+   * on a short element (a nav bar) than on a regular card. Treat a 200px-short
+   * surface as the reference and scale shorter controls down automatically,
+   * while still preserving a small amount of frost on tiny pills.
    */
   private effectiveBlur(): number {
-    const cap = Math.min(this.currentWidth, this.currentHeight) * 0.14;
-    return Math.min(this.options.blur, cap);
+    const short = Math.min(this.currentWidth, this.currentHeight);
+    const tuning = this.opticalTuning();
+    const preset = this.presetTuning();
+    const sizeScale = Math.max(tuning.minBlurScale, Math.min(1, short / tuning.blurReferenceShortSide));
+    const cap = short * 0.14;
+    return Math.min(this.options.blur * tuning.blur * preset.blur * sizeScale, cap);
   }
 
   /**
@@ -408,7 +587,7 @@ export class LiquidGlass {
       radius: this.computedRadius(),
       thickness: this.computedThickness(),
       pixelRatio: this.displacementDpr(),
-      refraction: this.options.refraction,
+      refraction: this.profiledRefraction(),
     });
 
     this.filter = new FilterChain({
@@ -426,7 +605,7 @@ export class LiquidGlass {
         radius: this.computedRadius(),
         thickness: this.computedThickness(),
         pixelRatio: this.specularDpr(),
-        intensity: this.options.specularIntensity,
+        intensity: this.profiledSpecularIntensity(),
       }) : null,
       root: this.root,
     });
@@ -459,7 +638,7 @@ export class LiquidGlass {
         radius: this.computedRadius(),
         thickness: this.computedThickness(),
         pixelRatio: this.displacementDpr(),
-        refraction: this.options.refraction,
+        refraction: this.profiledRefraction(),
       });
       this.filter.updateDisplacement(disp.url, this.currentWidth, this.currentHeight, disp.padding);
       // Blur and refraction are size-dependent (capped to the short side) — re-apply.
@@ -472,7 +651,7 @@ export class LiquidGlass {
           radius: this.computedRadius(),
           thickness: this.computedThickness(),
           pixelRatio: this.specularDpr(),
-          intensity: this.options.specularIntensity,
+          intensity: this.profiledSpecularIntensity(),
         });
         this.filter.updateSpecular(specUrl, this.currentWidth, this.currentHeight);
       }
@@ -489,8 +668,8 @@ export class LiquidGlass {
   /** Scheme-aware rim + inner glow + float shadow that complete the glass look. */
   private applyEdges(): void {
     if (!this.options.edges) return;
-    this.element.style.boxShadow =
-      this.resolveScheme() === 'dark' ? EDGE_SHADOW_DARK : EDGE_SHADOW_LIGHT;
+    const scheme = this.resolveScheme();
+    this.element.style.boxShadow = scheme === 'dark' ? EDGE_SHADOW_DARK : EDGE_SHADOW_LIGHT;
   }
 
   private variantTint(): string {
@@ -515,10 +694,79 @@ export class LiquidGlass {
     );
   }
 
-  /** Rim band, capped at 28% of the short side so small pills stay coherent. */
+  /** Rim band, capped under half the short side so small pills keep lens volume. */
   private computedThickness(): number {
-    const cap = Math.min(this.currentWidth, this.currentHeight) * 0.28;
-    return Math.max(2, Math.min(this.options.thickness, cap));
+    const cap = Math.min(this.currentWidth, this.currentHeight) * 0.46;
+    return Math.max(
+      2,
+      Math.min(this.options.thickness * this.opticalTuning().thickness * this.presetTuning().thickness, cap)
+    );
+  }
+
+  private profiledRefraction(): number {
+    return this.options.refraction * this.opticalTuning().refraction * this.presetTuning().refraction;
+  }
+
+  private profiledSpecularIntensity(): number {
+    return Math.max(
+      0,
+      this.options.specularIntensity * this.opticalTuning().specular * this.presetTuning().specular
+    );
+  }
+
+  private opticalTuning(): OpticalTuning {
+    return OPTICAL_PROFILE[this.resolveOpticalProfile()];
+  }
+
+  private opticalTuningFor(profile: LiquidGlassOpticalProfile): OpticalTuning {
+    return OPTICAL_PROFILE[profile === 'auto' ? this.resolveAutoOpticalProfile() : profile];
+  }
+
+  private presetTuning(): PresetTuning {
+    return this.presetTuningFor(this.options.preset, this.options.profile);
+  }
+
+  private presetTuningFor(
+    preset: LiquidGlassMaterialPreset,
+    profile: LiquidGlassOpticalProfile
+  ): PresetTuning {
+    return MATERIAL_PRESET[preset === 'auto' ? this.resolveAutoMaterialPreset(profile) : preset];
+  }
+
+  private resolveAutoMaterialPreset(
+    profile: LiquidGlassOpticalProfile
+  ): Exclude<LiquidGlassMaterialPreset, 'auto'> {
+    const resolvedProfile = profile === 'auto' ? this.resolveAutoOpticalProfile() : profile;
+    if (resolvedProfile === 'control' || resolvedProfile === 'selection') return 'vivid';
+    return 'balanced';
+  }
+
+  private resolveMaterialPreset(): Exclude<LiquidGlassMaterialPreset, 'auto'> {
+    return this.options.preset === 'auto'
+      ? this.resolveAutoMaterialPreset(this.options.profile)
+      : this.options.preset;
+  }
+
+  private resolveOpticalProfile(): Exclude<LiquidGlassOpticalProfile, 'auto'> {
+    return this.options.profile === 'auto' ? this.resolveAutoOpticalProfile() : this.options.profile;
+  }
+
+  private resolveAutoOpticalProfile(): Exclude<LiquidGlassOpticalProfile, 'auto'> {
+    const className =
+      typeof this.element.className === 'string' ? this.element.className.toLowerCase() : '';
+    return resolveLiquidGlassAutoProfile({
+      tagName: this.element.tagName,
+      role: this.element.getAttribute('role'),
+      ariaLabel: this.element.getAttribute('aria-label'),
+      className,
+      textLength: this.element.textContent?.trim().length ?? 0,
+      buttonCount: this.element.querySelectorAll('button,[role="button"]').length,
+      linkCount: this.element.querySelectorAll('a[href]').length,
+      inputCount: this.element.querySelectorAll('input,select,textarea,[role="slider"]').length,
+      width: this.currentWidth,
+      height: this.currentHeight,
+      radius: this.computedRadius(),
+    });
   }
 
   private resolve(opts: LiquidGlassOptions): ResolvedOptions {
@@ -544,6 +792,8 @@ export class LiquidGlass {
       blur: opts.blur ?? VARIANT_BLUR[variant],
       saturation: opts.saturation ?? DEFAULT_OPTIONS.saturation,
       variant,
+      profile: opts.profile ?? DEFAULT_OPTIONS.profile,
+      preset: opts.preset ?? DEFAULT_OPTIONS.preset,
       scheme: opts.scheme ?? DEFAULT_OPTIONS.scheme,
       tint: opts.tint ?? null,
       specular: opts.specular ?? DEFAULT_OPTIONS.specular,
@@ -570,6 +820,8 @@ export class LiquidGlass {
       blur: o.blur,
       saturation: o.saturation,
       variant: o.variant,
+      profile: o.profile,
+      preset: o.preset,
       scheme: o.scheme,
       tint: o.tint ?? undefined,
       specular: o.specular,

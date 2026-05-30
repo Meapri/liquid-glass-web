@@ -33,8 +33,8 @@ const LIGHT_X = 0;
 const LIGHT_Y = -1;
 
 const PRIMARY_EXP = 3; // broad top emphasis (brightest at the top edge)
-const W_PRIMARY = 0.6; // gentle static top edge — the dynamic cursor light leads
-const W_RIM = 0.1; // faint continuous line tracing the rest of the silhouette
+const W_PRIMARY = 0.84; // visible static top edge, like iOS control glass
+const W_RIM = 0.18; // faint continuous line tracing the rest of the silhouette
 const GAIN = 255;
 
 // Broad convex gloss — light reflecting off the rounded glass surface, brightest
@@ -42,9 +42,9 @@ const GAIN = 255;
 // on real Liquid Glass controls, on top of the crisp rim.
 const GLOSS_CX = 0; // upper-centre, in normalised [-1,1] coords
 const GLOSS_CY = -0.42;
-const GLOSS_RADIUS = 1.3;
-const GLOSS_EXP = 2.4;
-const W_GLOSS = 0.22;
+const GLOSS_RADIUS = 1.42;
+const GLOSS_EXP = 1.95;
+const W_GLOSS = 0.4;
 
 export function generateSpecularMap(params: SpecularMapParams): string {
   const dpr = params.pixelRatio;
@@ -61,9 +61,9 @@ export function generateSpecularMap(params: SpecularMapParams): string {
   const imgData = ctx.createImageData(w, h);
   const data = imgData.data;
 
-  // Razor-thin edge line — Apple defines the silhouette with a crisp light at the
-  // very rim, not a soft wide bevel. ~2 CSS px, capped under the corner radius.
-  const lineW = Math.min(2.2 * dpr, Math.max(2, r * 0.6));
+  // Crisp edge line — Apple defines the silhouette with a bright rim plus a
+  // slightly wider luminous rolloff, especially on small circular controls.
+  const lineW = Math.min(3.6 * dpr, Math.max(2, r * 0.64));
   const surf = makeSurface({ cx: w / 2, cy: h / 2, halfW: w / 2, halfH: h / 2, r });
 
   for (let y = 0; y < h; y++) {
