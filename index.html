@@ -41,7 +41,7 @@
     </div>
 
     <!-- Top status / nav bar -->
-    <header class="nav liquid-glass" id="lg-nav" data-glass='{"radius":"pill","preset":"auto","variant":"regular"}'>
+    <header class="nav liquid-glass" id="lg-nav" data-liquid-glass='{"radius":"pill","preset":"auto","variant":"regular"}'>
       <div class="nav-brand">
         <span class="brand-dot"></span>
         <span class="brand-text">Liquid Glass</span>
@@ -69,19 +69,19 @@
         </div>
 
         <div class="hero-cards">
-          <article class="card liquid-glass lg-entrance lg-interactive" id="lg-card-1" data-glass='{"radius":28,"preset":"auto","variant":"regular"}'>
+          <article class="card liquid-glass lg-entrance lg-interactive" id="lg-card-1" data-liquid-glass='{"radius":28,"preset":"auto","variant":"regular"}'>
             <h3>Refraction</h3>
             <p>Pillow-rim displacement map bends backdrop pixels through the lens edge.</p>
             <span class="badge">SVG · GPU</span>
           </article>
 
-          <article class="card liquid-glass lg-entrance lg-interactive" style="animation-delay: 100ms" id="lg-card-2" data-glass='{"radius":28,"preset":"auto","chromaticAberration":0.6,"variant":"regular"}'>
+          <article class="card liquid-glass lg-entrance lg-interactive" style="animation-delay: 100ms" id="lg-card-2" data-liquid-glass='{"radius":28,"preset":"auto","chromaticAberration":0.6,"variant":"regular"}'>
             <h3>Chromatic dispersion</h3>
             <p>Three-channel displacement passes separate R/G/B at the rim.</p>
             <span class="badge">3× pass</span>
           </article>
 
-          <article class="card liquid-glass lg-entrance lg-interactive" style="animation-delay: 200ms" id="lg-card-3" data-glass='{"radius":28,"preset":"auto","variant":"regular","tint":"rgba(255,255,255,0.2)"}'>
+          <article class="card liquid-glass lg-entrance lg-interactive" style="animation-delay: 200ms" id="lg-card-3" data-liquid-glass='{"radius":28,"preset":"auto","variant":"regular","tint":"rgba(255,255,255,0.2)"}'>
             <h3>Specular rim</h3>
             <p>Static top-left highlight baked into the filter — zero JS per frame.</p>
             <span class="badge">SVG · GPU</span>
@@ -97,7 +97,7 @@
           <!-- Notification card -->
           <div class="pattern-row">
             <div class="pattern-label">Notification</div>
-            <div class="notification liquid-glass" id="lg-notif" data-glass='{"radius":22,"preset":"auto","variant":"regular"}'>
+            <div class="notification liquid-glass" id="lg-notif" data-liquid-glass='{"radius":22,"preset":"auto","variant":"regular"}'>
               <div class="notif-icon">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M12 22a3 3 0 0 0 3-3H9a3 3 0 0 0 3 3Z" />
@@ -116,10 +116,10 @@
           <div class="pattern-row">
             <div class="pattern-label">Controls</div>
             <div class="controls-row">
-              <button class="btn liquid-glass lg-interactive" data-glass='{"radius":"pill","preset":"auto"}'>Primary</button>
-              <button class="btn btn-md liquid-glass lg-interactive" data-glass='{"radius":"pill","preset":"auto"}'>Secondary</button>
-              <button class="btn btn-lg liquid-glass lg-interactive" data-glass='{"radius":"pill","preset":"auto","variant":"regular"}'>Tertiary</button>
-              <button class="btn-icon liquid-glass lg-interactive" aria-label="Play" data-glass='{"radius":999,"preset":"auto"}'>
+              <button class="btn liquid-glass lg-interactive" data-liquid-glass='{"radius":"pill","preset":"auto"}'>Primary</button>
+              <button class="btn btn-md liquid-glass lg-interactive" data-liquid-glass='{"radius":"pill","preset":"auto"}'>Secondary</button>
+              <button class="btn btn-lg liquid-glass lg-interactive" data-liquid-glass='{"radius":"pill","preset":"auto","variant":"regular"}'>Tertiary</button>
+              <button class="btn-icon liquid-glass lg-interactive" aria-label="Play" data-liquid-glass='{"radius":999,"preset":"auto"}'>
                 <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
               </button>
             </div>
@@ -128,7 +128,7 @@
           <!-- Sheet/modal -->
           <div class="pattern-row">
             <div class="pattern-label">Sheet</div>
-            <div class="sheet liquid-glass" id="lg-sheet" role="dialog" data-glass='{"radius":36,"preset":"auto","variant":"regular"}'>
+            <div class="sheet liquid-glass" id="lg-sheet" role="dialog" data-liquid-glass='{"radius":36,"preset":"auto","variant":"regular"}'>
               <div class="sheet-handle"></div>
               <h3>Edit profile</h3>
               <div class="sheet-field">
@@ -149,7 +149,7 @@
           <!-- Now playing widget -->
           <div class="pattern-row">
             <div class="pattern-label">Widget</div>
-            <div class="widget liquid-glass" id="lg-widget" data-glass='{"radius":28,"preset":"auto","variant":"regular"}'>
+            <div class="widget liquid-glass" id="lg-widget" data-liquid-glass='{"radius":28,"preset":"auto","variant":"regular"}'>
               <div class="widget-art"></div>
               <div class="widget-body">
                 <strong>Drift</strong>
@@ -173,12 +173,12 @@
 
         <div class="anim-grid">
           <!-- Menu summon morph -->
-          <div class="anim-card">
+          <div class="anim-card liquid-glass" data-liquid-glass='{"radius":24,"profile":"panel","preset":"auto","variant":"regular"}'>
             <div class="anim-label">Menu morph — flows out of the control, thicker as it grows</div>
-            <button class="btn anim-menu-trigger liquid-glass lg-interactive" id="anim-menu-trigger" data-glass='{"radius":"pill","thickness":44,"refraction":50,"variant":"regular"}'>
+            <button class="btn anim-menu-trigger liquid-glass lg-interactive" id="anim-menu-trigger" data-liquid-glass='{"radius":"pill","thickness":44,"refraction":50,"variant":"regular"}'>
               Options ▾
             </button>
-            <div class="anim-menu liquid-glass" id="anim-menu" data-glass='{"radius":24,"thickness":44,"refraction":40,"blur":28,"variant":"regular"}'>
+            <div class="anim-menu liquid-glass" id="anim-menu" data-liquid-glass='{"radius":24,"thickness":44,"refraction":40,"blur":28,"variant":"regular"}'>
               <button class="anim-menu-item">Share</button>
               <button class="anim-menu-item">Duplicate</button>
               <button class="anim-menu-item">Rename</button>
@@ -188,65 +188,65 @@
           </div>
 
           <!-- Materialize in / out -->
-          <div class="anim-card">
+          <div class="anim-card liquid-glass" data-liquid-glass='{"radius":24,"profile":"panel","preset":"auto","variant":"regular"}'>
             <div class="anim-label">Materialize in / out — springs the lensing, not a fade</div>
             <div class="anim-materialize-stage">
-              <div class="chip liquid-glass" id="anim-chip" data-glass='{"radius":18,"thickness":40,"refraction":48,"variant":"regular"}'>Liquid chip</div>
+              <div class="chip liquid-glass" id="anim-chip" data-liquid-glass='{"radius":18,"thickness":40,"refraction":48,"variant":"regular"}'>Liquid chip</div>
             </div>
             <div class="anim-btn-row">
-              <button class="btn btn-sm liquid-glass lg-interactive" id="anim-mat-in" data-glass='{"radius":"pill","thickness":40,"refraction":44}'>Materialize in</button>
-              <button class="btn btn-sm liquid-glass lg-interactive" id="anim-mat-out" data-glass='{"radius":"pill","thickness":40,"refraction":44}'>Out</button>
+              <button class="btn btn-sm liquid-glass lg-interactive" id="anim-mat-in" data-liquid-glass='{"radius":"pill","thickness":40,"refraction":44}'>Materialize in</button>
+              <button class="btn btn-sm liquid-glass lg-interactive" id="anim-mat-out" data-liquid-glass='{"radius":"pill","thickness":40,"refraction":44}'>Out</button>
             </div>
           </div>
 
           <!-- Interaction illumination -->
-          <div class="anim-card">
+          <div class="anim-card liquid-glass" data-liquid-glass='{"radius":24,"profile":"panel","preset":"auto","variant":"regular"}'>
             <div class="anim-label">Interaction illumination — press &amp; hold; light blooms from your finger and onto nearby glass</div>
-            <div class="press-target liquid-glass lg-interactive" id="anim-press" data-glass='{"radius":24,"thickness":44,"refraction":52,"variant":"regular"}'>
+            <div class="press-target liquid-glass lg-interactive" id="anim-press" data-liquid-glass='{"radius":24,"thickness":44,"refraction":52,"variant":"regular"}'>
               Press &amp; hold
             </div>
           </div>
 
           <!-- Sheet morph -->
-          <div class="anim-card">
+          <div class="anim-card liquid-glass" data-liquid-glass='{"radius":24,"profile":"panel","preset":"auto","variant":"regular"}'>
             <div class="anim-label">Sheet — materializes up from the bottom over a dimming scrim</div>
-            <button class="btn liquid-glass lg-interactive" id="anim-sheet-trigger" data-glass='{"radius":"pill","thickness":44,"refraction":50,"variant":"regular"}'>
+            <button class="btn liquid-glass lg-interactive" id="anim-sheet-trigger" data-liquid-glass='{"radius":"pill","thickness":44,"refraction":50,"variant":"regular"}'>
               Open sheet
             </button>
           </div>
 
           <!-- Context menu (iOS long-press style) -->
-          <div class="anim-card">
+          <div class="anim-card liquid-glass" data-liquid-glass='{"radius":24,"profile":"panel","preset":"auto","variant":"regular"}'>
             <div class="anim-label">Context menu — iOS long-press style: grouped rows, icons, destructive</div>
-            <button class="btn liquid-glass lg-interactive" id="anim-ctx-trigger" data-glass='{"radius":"pill","thickness":44,"refraction":50,"variant":"regular"}'>
+            <button class="btn liquid-glass lg-interactive" id="anim-ctx-trigger" data-liquid-glass='{"radius":"pill","thickness":44,"refraction":50,"variant":"regular"}'>
               Show menu
             </button>
           </div>
 
           <!-- Adaptive appearance — static reference (light vs dark backdrop) -->
-          <div class="anim-card">
+          <div class="anim-card liquid-glass" data-liquid-glass='{"radius":24,"profile":"panel","preset":"auto","variant":"regular"}'>
             <div class="anim-label">Adaptive — auto light/dark to match the content behind</div>
             <div class="adapt-row">
               <div class="adapt-swatch adapt-dark">
-                <div class="adapt-pill liquid-glass" data-glass='{"radius":"pill","preset":"auto","scheme":"adaptive"}'>Glass</div>
+                <div class="adapt-pill liquid-glass" data-liquid-glass='{"radius":"pill","preset":"auto","scheme":"adaptive"}'>Glass</div>
               </div>
               <div class="adapt-swatch adapt-light">
-                <div class="adapt-pill liquid-glass" data-glass='{"radius":"pill","preset":"auto","scheme":"adaptive"}'>Glass</div>
+                <div class="adapt-pill liquid-glass" data-liquid-glass='{"radius":"pill","preset":"auto","scheme":"adaptive"}'>Glass</div>
               </div>
             </div>
           </div>
 
           <!-- Adaptive appearance — smooth auto transition as the backdrop changes -->
-          <div class="anim-card">
+          <div class="anim-card liquid-glass" data-liquid-glass='{"radius":24,"profile":"panel","preset":"auto","variant":"regular"}'>
             <div class="anim-label">Adaptive — smooth crossfade as the content behind changes</div>
             <div class="adapt-stage" id="adapt-stage">
-              <div class="adapt-pill liquid-glass" id="adapt-auto" data-glass='{"radius":"pill","preset":"auto","scheme":"adaptive"}'>Aa Glass</div>
+              <div class="adapt-pill liquid-glass" id="adapt-auto" data-liquid-glass='{"radius":"pill","preset":"auto","scheme":"adaptive"}'>Aa Glass</div>
             </div>
           </div>
         </div>
 
         <!-- The sheet itself (fixed-positioned, hidden until presented) -->
-        <div class="anim-sheet liquid-glass" id="anim-sheet" data-glass='{"radius":34,"thickness":48,"refraction":60,"variant":"regular"}'>
+        <div class="anim-sheet liquid-glass" id="anim-sheet" data-liquid-glass='{"radius":34,"thickness":48,"refraction":60,"variant":"regular"}'>
           <div class="anim-sheet-handle"></div>
           <h3>Liquid sheet</h3>
           <p>Rises from below and grows — thicker glass at full size, with a dimming scrim behind for legibility.</p>
@@ -254,7 +254,7 @@
         </div>
 
         <!-- The context menu (fixed-positioned, hidden until shown) -->
-        <div class="anim-ctx liquid-glass" id="anim-ctx" data-glass='{"radius":22,"thickness":44,"refraction":40,"blur":30,"tint":"rgba(30,30,36,0.55)"}'>
+        <div class="anim-ctx liquid-glass" id="anim-ctx" data-liquid-glass='{"radius":22,"thickness":44,"refraction":40,"blur":30,"tint":"rgba(30,30,36,0.55)"}'>
           <button class="ctx-item">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/></svg>
             <span>Copy</span>
@@ -285,7 +285,7 @@
         <div class="playground-stage">
           <div class="play-target liquid-glass" id="lg-play"></div>
         </div>
-        <aside class="play-panel liquid-glass" id="lg-panel" data-glass='{"radius":24,"preset":"auto","variant":"regular"}'>
+        <aside class="play-panel liquid-glass" id="lg-panel" data-liquid-glass='{"radius":24,"preset":"auto","variant":"regular"}'>
           <h3>Live parameters</h3>
           <label>Radius <span id="v-radius">36</span>px
             <input type="range" min="0" max="240" value="36" id="i-radius" />
@@ -318,7 +318,7 @@
     </main>
 
     <!-- Bottom floating tab bar -->
-    <nav class="tabbar liquid-glass" id="lg-tabbar" role="tablist" data-glass='{"radius":"pill","preset":"auto","variant":"regular"}'>
+    <nav class="tabbar liquid-glass" id="lg-tabbar" role="tablist" data-liquid-glass='{"radius":"pill","preset":"auto","variant":"regular"}'>
       <button class="tab active" aria-label="Home">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-8 9 8v10a1 1 0 0 1-1 1h-5v-7H10v7H5a1 1 0 0 1-1-1z"/></svg>
       </button>
