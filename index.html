@@ -14,6 +14,10 @@
     <link rel="stylesheet" href="/demo/styles.css" />
   </head>
   <body>
+    <!-- Refraction scene: the plain gradient every glass box refracts via
+         backdropSource (cross-browser). Kept filter-free so it clones cleanly. -->
+    <div id="lg-scene" class="lg-scene" aria-hidden="true"></div>
+
     <!-- iOS 26 Liquid Morphing Gooey Filter -->
     <svg style="position: absolute; width: 0; height: 0;" aria-hidden="true">
       <defs>
