@@ -47,7 +47,12 @@ const GLOSS_EXP = 1.95;
 const W_GLOSS = 0.4;
 
 export function generateSpecularMap(params: SpecularMapParams): string {
-  const dpr = params.pixelRatio;
+  // The rim is a thin bright line — the part most prone to stair-stepping at a
+  // low output resolution — so supersample and downscale (anti-alias) the same
+  // way as the displacement map.
+  const outDpr = params.pixelRatio;
+  const ss = outDpr < 1.1 ? 2 : 1;
+  const dpr = outDpr * ss;
   const w = Math.max(2, Math.round(params.width * dpr));
   const h = Math.max(2, Math.round(params.height * dpr));
   const r = Math.max(0, Math.min(Math.min(w, h) / 2, params.radius * dpr));
@@ -109,6 +114,17 @@ export function generateSpecularMap(params: SpecularMapParams): string {
 
   ctx.putImageData(imgData, 0, 0);
 
+  if (ss > 1) {
+    const dstW = Math.max(1, Math.round(w / ss));
+    const dstH = Math.max(1, Math.round(h / ss));
+    const tmp = scratchHTMLCanvas('spec-ds', dstW, dstH);
+    const dctx = tmp.getContext('2d', { willReadFrequently: true })!;
+    dctx.clearRect(0, 0, dstW, dstH);
+    dctx.imageSmoothingEnabled = true;
+    dctx.imageSmoothingQuality = 'high';
+    dctx.drawImage(canvas as unknown as CanvasImageSource, 0, 0, w, h, 0, 0, dstW, dstH);
+    return tmp.toDataURL('image/webp', 1.0);
+  }
   if (canvas instanceof HTMLCanvasElement) {
     return canvas.toDataURL('image/webp', 1.0);
   }
