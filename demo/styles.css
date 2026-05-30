@@ -11,7 +11,7 @@ html, body {
   margin: 0;
   padding: 0;
   color: var(--text);
-  font-family: 'SF Pro Display', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: 'SF Pro Display', 'Inter', 'Pretendard', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', sans-serif;
   font-feature-settings: 'cv11', 'ss01';
   min-height: 100vh;
   overflow-x: hidden;
