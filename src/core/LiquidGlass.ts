@@ -85,6 +85,7 @@ const DEFAULT_OPTIONS: ResolvedOptions = {
   specularIntensity: 0.5,
   edges: true,
   refractBackground: null,
+  backdropSource: null,
   applyRadius: true,
   mapPixelRatio: 2,
   quality: 'auto',
@@ -238,6 +239,14 @@ const MATERIAL_PRESET: Record<Exclude<LiquidGlassMaterialPreset, 'auto'>, Preset
 const IS_CHROMIUM =
   typeof navigator !== 'undefined' && /Chrome\//.test(navigator.userAgent);
 
+/** Firefox can render a live element as an image via `-moz-element(#id)`. */
+const SUPPORTS_MOZ_ELEMENT =
+  typeof CSS !== 'undefined' &&
+  typeof CSS.supports === 'function' &&
+  CSS.supports('background-image', '-moz-element(#lg)');
+
+let sceneIdCounter = 0;
+
 /**
  * Relative luminance (0..1) of a CSS `backgroundColor`, or null when it's
  * effectively transparent (a gradient/image-only layer we can't read).
@@ -266,6 +275,21 @@ function roundCss(value: number): string {
   return String(Math.round(value * 1000) / 1000);
 }
 
+/** Ensure the scene element has an id so `-moz-element(#id)` can reference it. */
+function ensureSceneId(el: HTMLElement): string {
+  if (!el.id) el.id = `lg-scene-${++sceneIdCounter}`;
+  return el.id;
+}
+
+/** Make a DOM clone inert, invisible to a11y, and id-free (no duplicate ids). */
+function stripCloneInteractivity(clone: HTMLElement): void {
+  clone.removeAttribute('id');
+  clone.setAttribute('aria-hidden', 'true');
+  clone.setAttribute('inert', '');
+  clone.style.pointerEvents = 'none';
+  clone.querySelectorAll('[id]').forEach((n) => n.removeAttribute('id'));
+}
+
 export class LiquidGlass {
   readonly element: HTMLElement;
   private options: ResolvedOptions;
@@ -285,6 +309,11 @@ export class LiquidGlass {
   private reducedTransparency = false;
   /** Injected child layer for the enhanced fallback (specular rim / refraction). */
   private fxLayer: HTMLElement | null = null;
+  /** backdropSource refraction state (Firefox -moz-element / Safari DOM clone). */
+  private backdropSceneEl: HTMLElement | null = null;
+  private refractClone: HTMLElement | null = null;
+  private backdropMode: 'moz' | 'clone' | null = null;
+  private backdropSyncRaf = 0;
   private regenTimer: number | null = null;
   /** Backdrop-aware shadow multiplier (1 = neutral; >1 darker backdrop). */
   private shadowAdapt = 1;
@@ -583,6 +612,14 @@ export class LiquidGlass {
     this.removeFallbackFx();
     if (!this.fallbackEnhanced() || this.suspended) return;
 
+    // Best path first: a designated scene element gives Chromium-level
+    // refraction here too (Firefox via -moz-element, others via a DOM clone).
+    const scene = this.resolveBackdropSource();
+    if (scene) {
+      this.installBackdropRefraction(scene);
+      return;
+    }
+
     const layer = document.createElement('div');
     layer.setAttribute('aria-hidden', 'true');
     // z-index:-1 keeps it above the element's tint but below the in-flow
@@ -591,35 +628,12 @@ export class LiquidGlass {
       'position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:-1;';
 
     if (this.options.refractBackground) {
-      const disp = getDisplacementMap({
-        width: this.currentWidth,
-        height: this.currentHeight,
-        radius: this.computedRadius(),
-        thickness: this.computedThickness(),
-        pixelRatio: this.displacementDpr(),
-        refraction: this.profiledRefraction(),
-      });
-      this.filter = new FilterChain({
-        refraction: this.effectiveRefraction(),
-        chromaticAberration: 0, // single pass on the fallback path
-        blur: this.effectiveBlur(),
-        saturation: this.options.saturation,
-        width: this.currentWidth,
-        height: this.currentHeight,
-        displacementMapUrl: disp.url,
-        displacementPadding: disp.padding,
-        specularMapUrl: this.options.specular ? this.specularMapUrl() : null,
-        root: this.root,
-      });
       // The replicated backdrop fully paints the body, so drop the element's own
       // (un-refracted) backdrop blur to avoid a muddy double frost.
-      this.element.style.backdropFilter = 'none';
-      (this.element.style as WebkitStyle).webkitBackdropFilter = 'none';
+      this.dropOwnBackdrop();
       layer.style.background = this.options.refractBackground;
       layer.style.backgroundSize = 'cover';
-      (layer.style as CSSStyleDeclaration & { webkitFilter?: string }).webkitFilter =
-        this.filter.url;
-      layer.style.filter = this.filter.url;
+      this.setLayerFilter(layer, this.buildRefractFilter());
     } else if (this.options.specular) {
       // Specular rim only — screen-blend the baked highlight over the frost.
       layer.style.backgroundImage = `url("${this.specularMapUrl()}")`;
@@ -633,7 +647,145 @@ export class LiquidGlass {
     this.fxLayer = layer;
   }
 
+  /**
+   * Real refraction sourced from a designated scene element — the cross-engine
+   * route to Chromium-level lensing. The lens layer is glass-sized (so the
+   * shared displacement map aligns 1:1) and carries the scene as its source:
+   *   • Firefox → `-moz-element(#scene)` paints the LIVE scene as the lens image;
+   *   • others  → a position-synced DOM clone of the scene.
+   * A regular `filter:` (supported everywhere) then displaces that source with
+   * the same map Chromium runs in backdrop-filter, so the result matches.
+   */
+  private installBackdropRefraction(scene: HTMLElement): void {
+    const layer = document.createElement('div');
+    layer.setAttribute('aria-hidden', 'true');
+    layer.style.cssText =
+      'position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:-1;overflow:hidden;';
+
+    if (SUPPORTS_MOZ_ELEMENT) {
+      const id = ensureSceneId(scene);
+      layer.style.backgroundImage = `-moz-element(#${id})`;
+      layer.style.backgroundRepeat = 'no-repeat';
+      this.backdropMode = 'moz';
+    } else {
+      const clone = scene.cloneNode(true) as HTMLElement;
+      stripCloneInteractivity(clone);
+      clone.style.position = 'absolute';
+      clone.style.margin = '0';
+      clone.style.transformOrigin = 'top left';
+      this.refractClone = clone;
+      layer.appendChild(clone);
+      this.backdropMode = 'clone';
+    }
+
+    this.setLayerFilter(layer, this.buildRefractFilter());
+    // The scene copy IS the body now — drop the element's own backdrop frost.
+    this.dropOwnBackdrop();
+
+    this.element.insertBefore(layer, this.element.firstChild);
+    this.fxLayer = layer;
+    this.backdropSceneEl = scene;
+    this.syncBackdropRefraction();
+    window.addEventListener('scroll', this.onBackdropRefractSync, {
+      passive: true,
+      capture: true,
+    });
+    window.addEventListener('resize', this.onBackdropRefractSync, { passive: true });
+  }
+
+  /** Keep the scene source aligned with where the scene really is on screen. */
+  private syncBackdropRefraction(): void {
+    if (!this.fxLayer || !this.backdropSceneEl) return;
+    const g = this.element.getBoundingClientRect();
+    const s = this.backdropSceneEl.getBoundingClientRect();
+    const x = s.left - g.left;
+    const y = s.top - g.top;
+    if (this.backdropMode === 'moz') {
+      this.fxLayer.style.backgroundPosition = `${roundCss(x)}px ${roundCss(y)}px`;
+      this.fxLayer.style.backgroundSize = `${roundCss(s.width)}px ${roundCss(s.height)}px`;
+    } else if (this.refractClone) {
+      this.refractClone.style.left = `${roundCss(x)}px`;
+      this.refractClone.style.top = `${roundCss(y)}px`;
+      this.refractClone.style.width = `${roundCss(s.width)}px`;
+      this.refractClone.style.height = `${roundCss(s.height)}px`;
+    }
+  }
+
+  private onBackdropRefractSync = (): void => {
+    if (this.backdropSyncRaf) return;
+    this.backdropSyncRaf = requestAnimationFrame(() => {
+      this.backdropSyncRaf = 0;
+      if (!this.destroyed) this.syncBackdropRefraction();
+    });
+  };
+
+  /** Resolve `backdropSource` to a usable scene element, or null. */
+  private resolveBackdropSource(): HTMLElement | null {
+    const src = this.options.backdropSource;
+    if (!src) return null;
+    const el =
+      typeof src === 'string'
+        ? (this.root as ParentNode).querySelector<HTMLElement>(src)
+        : src;
+    if (!el || el === this.element || el.contains(this.element)) {
+      if (el) {
+        console.warn(
+          '[liquid-glass] backdropSource must be a separate element behind the glass, not the glass or an ancestor.'
+        );
+      }
+      return null;
+    }
+    return el;
+  }
+
+  private buildRefractFilter(): string {
+    const disp = getDisplacementMap({
+      width: this.currentWidth,
+      height: this.currentHeight,
+      radius: this.computedRadius(),
+      thickness: this.computedThickness(),
+      pixelRatio: this.displacementDpr(),
+      refraction: this.profiledRefraction(),
+    });
+    this.filter = new FilterChain({
+      refraction: this.effectiveRefraction(),
+      chromaticAberration: 0, // single pass on the fallback path
+      blur: this.effectiveBlur(),
+      saturation: this.options.saturation,
+      width: this.currentWidth,
+      height: this.currentHeight,
+      displacementMapUrl: disp.url,
+      displacementPadding: disp.padding,
+      specularMapUrl: this.options.specular ? this.specularMapUrl() : null,
+      root: this.root,
+    });
+    return this.filter.url;
+  }
+
+  private setLayerFilter(layer: HTMLElement, url: string): void {
+    (layer.style as CSSStyleDeclaration & { webkitFilter?: string }).webkitFilter = url;
+    layer.style.filter = url;
+  }
+
+  private dropOwnBackdrop(): void {
+    this.element.style.backdropFilter = 'none';
+    (this.element.style as WebkitStyle).webkitBackdropFilter = 'none';
+  }
+
   private removeFallbackFx(): void {
+    window.removeEventListener(
+      'scroll',
+      this.onBackdropRefractSync,
+      { capture: true } as EventListenerOptions
+    );
+    window.removeEventListener('resize', this.onBackdropRefractSync);
+    if (this.backdropSyncRaf) {
+      cancelAnimationFrame(this.backdropSyncRaf);
+      this.backdropSyncRaf = 0;
+    }
+    this.refractClone = null;
+    this.backdropSceneEl = null;
+    this.backdropMode = null;
     this.fxLayer?.remove();
     this.fxLayer = null;
   }
@@ -1061,6 +1213,7 @@ export class LiquidGlass {
       specularIntensity: opts.specularIntensity ?? DEFAULT_OPTIONS.specularIntensity,
       edges: opts.edges ?? DEFAULT_OPTIONS.edges,
       refractBackground: opts.refractBackground ?? DEFAULT_OPTIONS.refractBackground,
+      backdropSource: opts.backdropSource ?? DEFAULT_OPTIONS.backdropSource,
       applyRadius: opts.applyRadius ?? DEFAULT_OPTIONS.applyRadius,
       mapPixelRatio: opts.mapPixelRatio ?? DEFAULT_OPTIONS.mapPixelRatio,
       quality: opts.quality ?? DEFAULT_OPTIONS.quality,
@@ -1090,6 +1243,7 @@ export class LiquidGlass {
       specularIntensity: o.specularIntensity,
       edges: o.edges,
       refractBackground: o.refractBackground ?? undefined,
+      backdropSource: o.backdropSource ?? undefined,
       applyRadius: o.applyRadius,
       mapPixelRatio: o.mapPixelRatio,
       quality: o.quality,

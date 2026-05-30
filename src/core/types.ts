@@ -88,6 +88,20 @@ export interface LiquidGlassOptions {
    * Example: `refractBackground: 'url(/hero.jpg) center/cover fixed'`.
    */
   refractBackground?: string;
+  /**
+   * Chromium-level refraction in ALL THREE engines, sourced from a designated
+   * "scene" element behind the glass (a map, photo, video, gradient panel — any
+   * discrete element the glass floats over). Pass the element or a CSS selector.
+   * The engine refracts the SAME displacement map against that scene per engine:
+   *   • Chromium → its native backdrop-filter (this option is ignored — the real
+   *     backdrop is already refracted, live, for free);
+   *   • Firefox  → `-moz-element()` renders the live scene as the lens source;
+   *   • Safari/other → a position-synced DOM clone of the scene is the source.
+   * The scene must NOT be the glass element or an ancestor of it (that would
+   * recurse / loop). Re-aligned on scroll & resize. Unlike `refractBackground`
+   * (a static CSS background), this refracts real, arbitrary scene content.
+   */
+  backdropSource?: HTMLElement | string;
   /** Apply the computed radius as the element's border-radius. Default: true. */
   applyRadius?: boolean;
   /** Device-pixel-ratio cap for the displacement map (1–3). Default: 2. */
@@ -154,6 +168,7 @@ export interface ResolvedOptions {
   specularIntensity: number;
   edges: boolean;
   refractBackground: string | null;
+  backdropSource: HTMLElement | string | null;
   applyRadius: boolean;
   mapPixelRatio: number;
   quality: LiquidGlassQuality;
