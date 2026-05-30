@@ -36,6 +36,7 @@ import { getDisplacementMap, getSpecularMap } from './MapCache';
 import { registerPointerLight, unregisterPointerLight } from './PointerField';
 import { getWebGLRefractor } from './WebGLRefractor';
 import type { RefractorBoxParams } from './WebGLRefractor';
+import { enqueueBuild } from './BuildQueue';
 
 const VARIANT_TINT: Record<LiquidGlassVariant, { light: string; dark: string }> = {
   regular: {
@@ -249,6 +250,32 @@ const SUPPORTS_MOZ_ELEMENT =
 
 let sceneIdCounter = 0;
 
+// One shared window-resize listener for ALL instances (a page with hundreds of
+// glass elements shouldn't register hundreds of listeners). Subscribers run on
+// resize and unsubscribe on destroy.
+const sharedResizeSubs = new Set<() => void>();
+let sharedResizeBound = false;
+function subscribeResize(fn: () => void): () => void {
+  sharedResizeSubs.add(fn);
+  if (!sharedResizeBound && typeof window !== 'undefined') {
+    sharedResizeBound = true;
+    window.addEventListener(
+      'resize',
+      () => {
+        for (const f of sharedResizeSubs) {
+          try {
+            f();
+          } catch {
+            /* one subscriber must not break the rest */
+          }
+        }
+      },
+      { passive: true }
+    );
+  }
+  return () => sharedResizeSubs.delete(fn);
+}
+
 /**
  * Relative luminance (0..1) of a CSS `backgroundColor`, or null when it's
  * effectively transparent (a gradient/image-only layer we can't read).
@@ -329,6 +356,10 @@ export class LiquidGlass {
   private gpuHandle: { destroy: () => void; refresh: () => void } | null = null;
   /** Tracks devicePixelRatio so a browser-zoom / monitor switch re-bakes maps. */
   private lastDpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+  /** Cancels a queued (time-sliced) initial build if it hasn't run yet. */
+  private pendingBuild: (() => void) | null = null;
+  /** Unsubscribe from the shared window-resize listener. */
+  private unsubResize: (() => void) | null = null;
   private regenTimer: number | null = null;
   /** Backdrop-aware shadow multiplier (1 = neutral; >1 darker backdrop). */
   private shadowAdapt = 1;
@@ -369,6 +400,9 @@ export class LiquidGlass {
     // Chromium keeps its superior native backdrop-filter. On the fallback path
     // (Safari/Firefox, or forced via quality:'low') a refraction scene routes
     // the box through the shared WebGL renderer instead of the CSS-only frost.
+    // The expensive map build is time-sliced (BuildQueue) so a page full of
+    // glass doesn't freeze on load — the tint + edges show immediately and the
+    // refraction/frost materializes within a few frames.
     if (this.usesFallback && !this.reducedTransparency && this.tryInstallGpu()) {
       this.usesGpu = true;
     } else if (this.usesFallback) {
@@ -376,7 +410,7 @@ export class LiquidGlass {
     } else if (this.options.lazy && typeof IntersectionObserver !== 'undefined') {
       this.setupLazy();
     } else {
-      this.installFilter();
+      this.scheduleBuild(() => this.installFilter());
     }
 
     // Size tracking for EVERY path (native, frost fallback, GPU) — so the glass
@@ -407,8 +441,9 @@ export class LiquidGlass {
 
     // Browser zoom / moving to a different-DPR display changes devicePixelRatio
     // without changing the element's CSS size, so ResizeObserver won't catch it —
-    // re-bake the maps at the new pixel density when that happens.
-    window.addEventListener('resize', this.onWindowResize, { passive: true });
+    // re-bake the maps at the new pixel density when that happens. One shared
+    // window listener serves every instance.
+    this.unsubResize = subscribeResize(this.onWindowResize);
 
     if (this.options.scheme === 'auto' && typeof window.matchMedia === 'function') {
       this.mqlScheme = window.matchMedia('(prefers-color-scheme: dark)');
@@ -544,6 +579,7 @@ export class LiquidGlass {
   suspend(): void {
     if (this.suspended || this.destroyed) return;
     this.suspended = true;
+    this.cancelPendingBuild();
     this.removeFallbackFx();
     this.teardownGpu();
     this.element.style.backdropFilter = 'none';
@@ -582,8 +618,10 @@ export class LiquidGlass {
       this.mqlScheme.removeEventListener('change', this.mqlListener);
     }
     window.removeEventListener('scroll', this.onBackdropScroll, { capture: true } as EventListenerOptions);
-    window.removeEventListener('resize', this.onWindowResize);
+    this.unsubResize?.();
+    this.unsubResize = null;
     if (this.scrollRaf) cancelAnimationFrame(this.scrollRaf);
+    this.cancelPendingBuild();
     this.removeFallbackFx();
     this.teardownGpu();
     this.filter?.destroy();
@@ -611,15 +649,34 @@ export class LiquidGlass {
     return false;
   }
 
+  /** Queue an expensive build (map gen / specular) on the time-sliced scheduler,
+   * cancelling any build already pending for this element. */
+  private scheduleBuild(fn: () => void): void {
+    this.cancelPendingBuild();
+    this.pendingBuild = enqueueBuild(() => {
+      this.pendingBuild = null;
+      if (!this.destroyed && !this.suspended) fn();
+    });
+  }
+
+  private cancelPendingBuild(): void {
+    if (this.pendingBuild) {
+      this.pendingBuild();
+      this.pendingBuild = null;
+    }
+  }
+
   private applyFallback(): void {
     this.usesFallback = true;
+    // The CSS frost is instant; apply it now so the element reads as glass
+    // immediately. The specular-rim overlay (an image build) is time-sliced.
     const css =
       this.options.fallbackFilter === DEFAULT_OPTIONS.fallbackFilter
         ? this.profiledFallbackFilter()
         : this.options.fallbackFilter;
     this.element.style.backdropFilter = css;
     (this.element.style as WebkitStyle).webkitBackdropFilter = css;
-    this.installFallbackFx();
+    this.scheduleBuild(() => this.installFallbackFx());
   }
 
   private profiledFallbackFilter(): string {
@@ -980,6 +1037,7 @@ export class LiquidGlass {
 
   private installFilter(): void {
     if (this.suspended) return;
+    this.cancelPendingBuild(); // a direct install supersedes any queued one
     const disp = getDisplacementMap({
       width: this.currentWidth,
       height: this.currentHeight,
