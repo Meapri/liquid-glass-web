@@ -1,5 +1,7 @@
 export { LiquidGlass } from './core/LiquidGlass';
 export { LiquidInteractive } from './core/Interactive';
+export { autoEnhance } from './core/enhance';
+export type { AutoEnhanceOptions, LiquidGlassRegistry } from './core/enhance';
 export { LiquidMenu, LiquidSheet } from './core/Morph';
 export { LiquidSelection } from './core/Selection';
 export { clearMapCache } from './core/MapCache';

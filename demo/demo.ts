@@ -1,27 +1,11 @@
-import { LiquidGlass, LiquidInteractive, LiquidMenu, LiquidSheet, LiquidSelection } from '../src';
+import { LiquidGlass, autoEnhance, LiquidMenu, LiquidSheet, LiquidSelection } from '../src';
 import type { LiquidGlassOptions, LiquidGlassVariant } from '../src';
 
-interface GlassConfig extends LiquidGlassOptions {}
-
-// Auto-apply LiquidGlass to every element with [data-glass]
-const instances = new Map<HTMLElement, LiquidGlass>();
-for (const el of Array.from(document.querySelectorAll<HTMLElement>('[data-glass]'))) {
-  const raw = el.dataset.glass ?? '{}';
-  let config: GlassConfig = {};
-  try {
-    config = JSON.parse(raw) as GlassConfig;
-  } catch (e) {
-    console.warn('Bad data-glass JSON on', el, e);
-  }
-  // The .liquid-glass class sets a default radius so 'auto' picks it up; we let
-  // explicit radius win.
-  instances.set(el, new LiquidGlass(el, config));
-}
-
-// Auto-apply LiquidInteractive to every element with .lg-interactive
-for (const el of Array.from(document.querySelectorAll<HTMLElement>('.lg-interactive'))) {
-  new LiquidInteractive(el);
-}
+// One call wires up every [data-liquid-glass] element (and binds the pointer
+// tilt / press behaviour to every .lg-interactive). `registry.instances` is the
+// element→LiquidGlass map the morph helpers below reach into.
+const registry = autoEnhance();
+const instances = registry.instances;
 
 // === Live playground ===
 const target = document.getElementById('lg-play') as HTMLDivElement | null;

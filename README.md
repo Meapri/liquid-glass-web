@@ -6,6 +6,20 @@ Apple-style **Liquid Glass** for the web. Real optical refraction via SVG
 Zero WebGL contexts, zero `requestAnimationFrame` loops per instance — everything
 is composited by the browser GPU pipeline.
 
+**▶ Live demo: https://meapri.github.io/liquid-glass-web/**
+
+## Contents
+
+- [Approach](#approach) — how the optical model works
+- [Install](#install) — add it to a project
+- [Quick start](#quick-start) — declarative (`autoEnhance`) and imperative
+- [Options](#options) — the full `LiquidGlassOptions` table
+- [Instance API](#instance-api) — `update` / `suspend` / `syncToBackdrop` / …
+- [Adaptive appearance](#adaptive-appearance) — auto light/dark from the backdrop
+- [Optical profiles](#optical-profiles) · [Material presets](#material-presets) · [Quality tiers](#quality-tiers)
+- [Motion & transitions](#motion--transitions) — interactive, menus, sheets, selections
+- [Performance](#performance-notes) · [Chrome extensions](#use-in-a-chrome-extension) · [Browser support](#browser-support)
+
 ## Approach
 
 - **Context-adaptive lensing** (Snell's law), the way Apple describes Liquid
@@ -76,24 +90,67 @@ is composited by the browser GPU pipeline.
 - **Shared `MapCache`** keyed by `(w, h, radius, thickness, dpr)` — same-sized
   elements reuse the same data URLs.
 
-## Quick start
+## Install
 
 ```bash
-npm install
-npm run dev   # demo at http://localhost:5173
+npm install            # in this repo
+npm run dev            # demo at http://localhost:5173
+npm run build          # bundle the demo into dist-demo/
+npm run build:lib      # bundle the library into dist/
+```
+
+The library is framework-agnostic and ships ESM + UMD builds plus type
+definitions (`dist/index.d.ts`). Import from `liquid-glass-web` once published,
+or from `./src` inside this repo.
+
+## Quick start
+
+### Declarative — `autoEnhance` (recommended)
+
+Mark elements in your HTML and let the engine wire them up in one call. The
+`data-liquid-glass` attribute holds that element's JSON
+[options](#options) (empty = defaults); anything matching `.lg-interactive`
+also gets the pointer-tilt / press motion.
+
+```html
+<nav class="lg-nav" data-liquid-glass='{"profile":"bar","radius":"pill"}'>…</nav>
+
+<button class="lg-interactive"
+        data-liquid-glass='{"radius":"pill","preset":"vivid"}'>Save</button>
 ```
 
 ```ts
-import { LiquidGlass, LiquidInteractive } from './src';
+import { autoEnhance } from 'liquid-glass-web';
+
+const glass = autoEnhance();             // scans the document
+glass.get(document.querySelector('.lg-nav')!)?.update({ blur: 10 });
+// glass.instances — Map<HTMLElement, LiquidGlass>
+// glass.destroy() — tear every instance down
+```
+
+`autoEnhance({ root, attribute, interactiveSelector, defaults, onError })` lets
+you scope to a Shadow root, rename the attribute, opt out of interactivity
+(`interactiveSelector: false`), or set options that apply under every element.
+
+### Imperative — `new LiquidGlass`
+
+For full control, construct instances directly:
+
+```ts
+import { LiquidGlass, LiquidInteractive } from 'liquid-glass-web';
 
 // Initialize the core refraction engine. Defaults are profile-aware.
-new LiquidGlass(document.querySelector('.tab-bar')!, {
+const bar = new LiquidGlass(document.querySelector('.tab-bar')!, {
   radius: 'pill',
   profile: 'bar',   // dissolved navigation material
   thickness: 44,    // reference lens depth; profile scales it
   refraction: 46,   // reference lensing; profile scales and caps it
   variant: 'regular',
 });
+
+bar.update({ blur: 10 });   // live patch
+bar.suspend();              // drop the GPU filter while hidden
+bar.resume();               // re-attach instantly
 
 // Auto-bind the pointer-tracked edge light (+ parallax tilt, jelly press)
 LiquidInteractive.initAll();
@@ -125,15 +182,17 @@ LiquidInteractive.initAll();
 | `fallbackFilter` | profile-aware | CSS `backdrop-filter` used on non-Chromium / `quality:'low'` / reduced-transparency. Leave unset to derive blur/saturation from the resolved profile; pass a string to override. |
 | `respectReducedMotion` | `true` | fall back to the cheap filter when `prefers-reduced-transparency` is set |
 
-`update(partial)` patches options live — `blur`, `saturation`, `tint`, `scheme`,
-`variant`, and refraction scale are applied as live filter/CSS attributes when
-possible. Map-changing options (`radius`, `thickness`, `profile`, `preset`,
-specular intensity, or refraction padding) regenerate the cached maps.
-`suspend()` /
-`resume()` cheaply detach / re-attach the GPU filter for show/hide.
+## Instance API
 
-`glass.resolved` exposes the final engine contract for debugging and design
-system tooling:
+| member | description |
+| --- | --- |
+| `update(partial)` | Patch options live. `blur`, `saturation`, `tint`, `scheme`, `variant` and refraction scale apply as live filter/CSS attributes; map-changing options (`radius`, `thickness`, `profile`, `preset`, specular intensity, refraction padding) regenerate the cached maps. |
+| `suspend()` / `resume()` | Cheaply detach / re-attach the GPU filter for show/hide — no pixel work, instance preserved. |
+| `syncToBackdrop()` | Re-read the backdrop and re-resolve the content-aware shadow and, for `scheme:'adaptive'`, the light/dark appearance. Call it when the content *behind* a stationary element changes. See [Adaptive appearance](#adaptive-appearance). |
+| `flexRefraction(px \| null)` | Live-override the lensing strength in px without rebuilding maps — a per-frame GPU attribute change used by the morph helpers. `null` restores the configured value. |
+| `configuredRefraction` | The resolved refraction the morph helpers ramp toward (read-only). |
+| `resolved` | The final engine contract (resolved profile/preset/blur/refraction/…), for debugging and design-system tooling. |
+| `destroy()` | Remove the filter, inline styles and listeners. |
 
 ```ts
 const glass = new LiquidGlass(el); // profile:'auto', preset:'auto'
@@ -146,6 +205,38 @@ console.log(glass.resolved);
 //   thickness: 16.72,
 //   ...
 // }
+```
+
+## Adaptive appearance
+
+`scheme: 'adaptive'` is Apple's *"automatically adapts to what's beneath it."*
+The engine samples the luminance of the content behind the element and resolves
+the glass to match, so labels stay legible:
+
+- over **light** content → a **light** glass with **dark** labels
+- over **dark** content → a **dark** glass with **light** labels
+- backdrop it can't read (gradient/image/transparent) → falls back to OS `auto`
+
+```html
+<span class="lg-interactive"
+      data-liquid-glass='{"scheme":"adaptive","radius":"pill"}'>Glass</span>
+```
+
+The switch **crossfades** (tint, label color and float shadow transition over
+~460 ms), so it glides instead of snapping. A `0.45–0.55` luminance hysteresis
+band prevents flicker on borderline backdrops.
+
+The element re-samples automatically on layout and on scroll (a passive,
+rAF-throttled listener). When the content behind a *stationary* element changes
+— a theme swap, a background image finishing load, a recolored hero — call
+`syncToBackdrop()` to glide it to the new appearance:
+
+```ts
+const g = new LiquidGlass(el, { scheme: 'adaptive' });
+document.querySelector('#theme-toggle')!.addEventListener('click', () => {
+  swapTheme();
+  g.syncToBackdrop();   // re-read backdrop → crossfade if it crossed the threshold
+});
 ```
 
 ### Optical profiles
@@ -193,6 +284,76 @@ reads. Most apps should leave both on `auto`.
 The displacement map is a smooth field that `feImage` bilinear-upscales, and the
 specular rim wants a soft hairline anyway, so below `high` both render at 1× —
 this is where most of the per-instance cost is saved with no visible change.
+
+## Motion & transitions
+
+Apple designed the motion and the look as one. These helpers ship the official
+gestures; all of them honor `prefers-reduced-motion` (they drop the elastic
+motion but keep the light).
+
+### `LiquidInteractive` — pointer tilt + jelly press
+
+Adds 3D parallax tilt on hover, a gel-like squish on press, and lift-on-touch to
+any element. The pointer-tracked **edge light** and **press illumination** are
+already core to every `.liquid-glass`; this adds the spatial motion on top.
+
+```ts
+LiquidInteractive.initAll();                 // every .lg-interactive
+LiquidInteractive.initAll('.my-buttons');    // or a custom selector
+new LiquidInteractive(el);                    // a single element
+```
+
+CSS-only motion is available without JS: add `.lg-materialize` /
+`.lg-dematerialize` to spring an element's scale + lensing in or out (a
+materialize, not a fade).
+
+### `LiquidMenu` — menu that morphs out of its trigger
+
+The menu **flows out of the control** and reads thicker as it grows (deeper
+shadow, more pronounced lensing). Pass the menu's own `LiquidGlass` instance and
+the morph also ramps its refraction from ~0 to full as it materializes.
+
+```ts
+const menuGlass = new LiquidGlass(menuEl, { profile: 'panel', radius: 24 });
+const menu = new LiquidMenu(triggerEl, menuEl, {
+  placement: 'bottom-start',   // see LiquidMenuPlacement
+  offset: 10,
+  glass: menuGlass,            // enables the lensing ramp during the morph
+});
+menu.open(); menu.close(); menu.toggle();
+```
+
+`LiquidMenuOptions`: `placement`, `offset`, `dismissOnOutside` (default `true`),
+`glass`. Works for popovers and iOS long-press context menus alike (same engine,
+grouped icon rows).
+
+### `LiquidSheet` — sheet that materializes up from the bottom
+
+A sheet/modal that grows up from the bottom edge over a dimming scrim. The sheet
+element should be its own `.liquid-glass`.
+
+```ts
+const sheet = new LiquidSheet(sheetEl, { bottomGap: 28 });
+sheet.present(); sheet.dismiss(); sheet.toggle();
+```
+
+`LiquidSheetOptions`: `dismissOnScrim` (default `true`), `bottomGap` (default
+`24`). The scrim only dims (Clear-style transparency needs a darkening layer);
+it does not add its own blur, so the sheet isn't buried.
+
+### `LiquidSelection` — gliding selection capsule
+
+A tinted glass capsule that springs between items (tab bars, segmented controls).
+
+```ts
+const sel = new LiquidSelection(containerEl, {
+  items: '.tab',                       // selector or HTMLElement[]
+  initial: 0,
+  tint: 'rgba(255, 255, 255, 0.16)',
+  onChange: (index, item) => console.log('selected', index, item),
+});
+sel.select(2);                          // move programmatically
+```
 
 ## Performance notes
 

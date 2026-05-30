@@ -516,6 +516,9 @@ input[type='text'] {
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 20px;
 }
+/* Each card is itself a Liquid Glass panel (see data-liquid-glass in the
+   markup). The engine sets the tint + float shadow inline, so the card only
+   needs layout here — no hardcoded background/border. */
 .anim-card {
   display: flex;
   flex-direction: column;
@@ -526,8 +529,6 @@ input[type='text'] {
   min-height: 210px;
   padding: 28px 22px;
   border-radius: 24px;
-  background: rgba(0, 0, 0, 0.18);
-  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 .anim-label { font-size: 13px; line-height: 1.5; opacity: 0.82; }
 
