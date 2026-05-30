@@ -49,10 +49,13 @@ input[type='text'] {
  * animated orbs / nested SVG filters) so it clones / -moz-elements cleanly and
  * renders real refraction in Safari & Firefox. Styled via the CLASS (not the id)
  * so the cloned copy — which has its id stripped — keeps the gradient. */
+/* Layering for the shared WebGL refractor: scene (-3) < orbs (-2) < GL canvas
+   (-1, inserted by the engine) < page content (auto). The glass boxes are
+   transparent windows above the GL canvas; the canvas draws their refraction. */
 .lg-scene {
   position: fixed;
   inset: 0;
-  z-index: -1;
+  z-index: -3;
   pointer-events: none;
   width: 100%;
   height: 100%;
@@ -62,7 +65,7 @@ input[type='text'] {
 .background {
   position: fixed;
   inset: 0;
-  z-index: 0;
+  z-index: -2;
   pointer-events: none;
   overflow: hidden;
 }

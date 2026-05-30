@@ -1,45 +1,44 @@
 /**
- * WebGLRefractor — cross-browser GPU refraction (Chrome / Safari / Firefox).
+ * WebGLRefractor — one shared full-viewport WebGL canvas that refracts a scene
+ * for every glass box, identically on Chrome, Safari and Firefox.
  *
- * Why: SVG-in-backdrop-filter is Chromium-only, and the DOM-clone fallback
- * re-aligns every box on every scroll frame (layout thrashing → jank). The
- * industry-standard cross-engine approach is a single shared WebGL canvas that
- * captures the backdrop scene ONCE into a texture, then for each glass box runs
- * a fragment shader that samples that texture with displaced UVs. Scrolling only
- * updates per-box uniforms — no re-capture, no per-frame layout writes — so it
- * stays smooth, and one GL context serves every box (no context-limit blowup).
+ * The point: Chrome's Liquid Glass is two parts — (1) the SVG filter MATH
+ * (blur → displacement → chromatic → specular) and (2) compositor access to the
+ * backdrop. (1) is portable GPU math; (2) is locked to the browser. So we run
+ * the SAME math here (sampling the SAME displacement map Chrome bakes, uploaded
+ * as a texture) against a scene we CAN read (a <canvas>/<img>/<video>). Run it
+ * on every browser and the output is identical cross-engine.
  *
- * The displacement and specular maps are the SAME ones the Chromium path bakes,
- * uploaded as textures, so the lensing matches across browsers.
+ * Performance (this is the rewrite that fixes the janky v1):
+ *   • ONE fixed full-viewport canvas, ONE render pass per frame — every box is a
+ *     quad positioned in the viewport by the vertex shader. No per-element
+ *     canvas, no drawImage/readback blit, no preserveDrawingBuffer.
+ *   • Per-box maps + uniforms are cached; a frame only re-reads rects and
+ *     updates the scene-sample offset. Off-screen boxes are culled.
+ *   • Scroll/resize just request one render — rects are read once per rAF, never
+ *     written, so there is no layout thrashing.
  *
- * Each registered element gets a child 2D <canvas> (its display surface); the
- * shared GL context renders a box then blits into that canvas. This keeps the
- * natural per-element stacking (no global z-index juggling) while sharing one
- * GL context.
+ * Layering: the canvas sits between the scene (behind) and the glass elements
+ * (in front, transparent windows whose text/shadow/rim stay CSS). The glass
+ * element keeps everything except the backdrop, which this draws.
  */
 
 export interface RefractorBoxParams {
-  /** Displacement map data URL (R/G encode the lens shift; same as Chromium). */
   displacementMapUrl: string;
-  /** Padding (CSS px per side) baked into the displacement map. */
   displacementPadding: number;
-  /** Specular map data URL, or null. */
   specularMapUrl: string | null;
-  /** Lens strength in px (feDisplacementMap scale = 2 * refraction). */
-  refraction: number;
-  /** Backdrop blur stdDeviation in px. */
-  blur: number;
-  /** Chromatic aberration 0..1. */
-  chromaticAberration: number;
-  /** Saturation as a fraction (1 = neutral). */
-  saturation: number;
+  refraction: number; // px
+  blur: number; // px
+  chromaticAberration: number; // 0..1
+  saturation: number; // %
+  radius: number; // px (rounded-rect mask)
+  tint: [number, number, number, number]; // rgba 0..1
 }
 
 interface BoxEntry {
   el: HTMLElement;
-  surface: HTMLCanvasElement;
-  ctx2d: CanvasRenderingContext2D;
   getParams: () => RefractorBoxParams;
+  cached: RefractorBoxParams | null;
   dispTex: WebGLTexture | null;
   specTex: WebGLTexture | null;
   dispUrl: string;
@@ -47,60 +46,67 @@ interface BoxEntry {
 }
 
 const VERT = `#version 300 es
-in vec2 a_pos;
+in vec2 a_pos;                 // 0..1 over the box
+uniform vec2 u_viewport;       // CSS px
+uniform vec2 u_box_origin;     // box top-left, CSS px (viewport coords)
+uniform vec2 u_box_size;       // CSS px
 out vec2 v_uv;
 void main() {
-  v_uv = a_pos;                       // 0..1 over the box
-  gl_Position = vec4(a_pos * 2.0 - 1.0, 0.0, 1.0);
+  v_uv = a_pos;
+  vec2 px = u_box_origin + a_pos * u_box_size;     // viewport px
+  vec2 ndc = (px / u_viewport) * 2.0 - 1.0;
+  ndc.y = -ndc.y;                                   // screen → clip space
+  gl_Position = vec4(ndc, 0.0, 1.0);
 }`;
 
-// Samples the scene texture (a viewport-sized snapshot) at the box's on-screen
-// position, displaced by the lens map, with chromatic split, a light frost
-// blur, saturation and an additive specular rim. Alpha comes from the lens
-// map's coverage so the rounded corners stay transparent.
 const FRAG = `#version 300 es
 precision highp float;
 in vec2 v_uv;
 out vec4 outColor;
 
-uniform sampler2D u_scene;     // viewport snapshot
-uniform sampler2D u_disp;      // displacement map (padded)
-uniform sampler2D u_spec;      // specular map
+uniform sampler2D u_scene;
+uniform sampler2D u_disp;
+uniform sampler2D u_spec;
 uniform bool  u_hasSpec;
-uniform vec2  u_scene_px;      // scene texture size (px)
-uniform vec2  u_box_origin;    // box top-left in scene px (viewport coords)
-uniform vec2  u_box_size;      // box size px
-uniform float u_pad;           // displacement padding px
-uniform float u_refraction;    // px
-uniform float u_blur;          // px
-uniform float u_chroma;        // 0..1
-uniform float u_sat;           // saturation fraction
+uniform vec2  u_scene_px;
+uniform vec2  u_box_origin;
+uniform vec2  u_box_size;
+uniform float u_pad;
+uniform float u_refraction;
+uniform float u_blur;
+uniform float u_chroma;
+uniform float u_sat;
+uniform float u_radius;
+uniform vec4  u_tint;
 
 vec3 sat(vec3 c, float s) {
   float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
   return mix(vec3(l), c, s);
 }
 
+// Signed coverage of a rounded rect, ~1px antialiased edge.
+float roundedMask(vec2 p, vec2 half_, float r) {
+  vec2 q = abs(p) - (half_ - r);
+  float d = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
+  return clamp(0.5 - d, 0.0, 1.0);
+}
+
 void main() {
-  // The displacement map is padded by u_pad px per side; map box-uv → padded-uv.
+  vec2 half_ = u_box_size * 0.5;
+  vec2 p = (v_uv - 0.5) * u_box_size;
+  float cover = roundedMask(p, half_, min(u_radius, min(half_.x, half_.y)));
+  if (cover < 0.003) { outColor = vec4(0.0); return; }
+
+  // Map box-uv → padded displacement-map uv, decode the encoded shift.
   vec2 padFrac = u_pad / (u_box_size + 2.0 * u_pad);
   vec2 dispUv = mix(padFrac, 1.0 - padFrac, v_uv);
-  vec4 d = texture(u_disp, dispUv);
-
-  // Coverage: the lens map fills the rounded-rect interior with alpha 1.
-  float cover = d.a;
-  if (cover < 0.01) { outColor = vec4(0.0); return; }
-
-  // Decode the encoded shift (128 = neutral) → px, then to scene-UV space.
-  vec2 shift = (d.rg - 0.5078431) * 2.0;            // ~[-1,1]
+  vec2 shift = (texture(u_disp, dispUv).rg - 0.5078431) * 2.0;
   vec2 shiftPx = shift * u_refraction;
-  vec2 sceneUv = (u_box_origin + v_uv * u_box_size + shiftPx) / u_scene_px;
 
-  // Chromatic split along the shift direction.
+  vec2 sceneUv = (u_box_origin + v_uv * u_box_size + shiftPx) / u_scene_px;
   vec2 ca = shiftPx * u_chroma * 0.6 / u_scene_px;
-  vec3 col;
-  // Light frost: a small cross blur scaled by u_blur.
   vec2 b = vec2(u_blur) / u_scene_px;
+
   vec3 acc = vec3(0.0);
   float wsum = 0.0;
   for (int i = -2; i <= 2; i++) {
@@ -111,56 +117,56 @@ void main() {
     acc.b += texture(u_scene, sceneUv - ca + o).b * w;
     wsum += w;
   }
-  col = acc / wsum;
-  col = sat(col, u_sat);
-  col *= 1.05;                                       // gentle "concentrates light"
+  vec3 col = acc / wsum;
+  col = sat(col, u_sat) * 1.05;
+  col = mix(col, u_tint.rgb, u_tint.a);             // glass tint
 
   if (u_hasSpec) {
-    vec3 s = texture(u_spec, v_uv).rgb * texture(u_spec, v_uv).a;
-    col = 1.0 - (1.0 - col) * (1.0 - s);             // screen blend
+    vec4 s = texture(u_spec, v_uv);
+    col = 1.0 - (1.0 - col) * (1.0 - s.rgb * s.a);  // screen-blend rim
   }
-  outColor = vec4(col, cover);
+  outColor = vec4(col * cover, cover);              // premultiplied
 }`;
 
 let singleton: WebGLRefractor | null = null;
+let triedInit = false;
 
 export function getWebGLRefractor(): WebGLRefractor | null {
-  if (singleton) return singleton.usable ? singleton : null;
-  singleton = new WebGLRefractor();
-  return singleton.usable ? singleton : null;
+  if (!triedInit) {
+    triedInit = true;
+    const r = new WebGLRefractor();
+    singleton = r.usable ? r : null;
+  }
+  return singleton;
 }
 
 export class WebGLRefractor {
   usable = false;
   private gl: WebGL2RenderingContext | null = null;
-  private glCanvas: HTMLCanvasElement;
+  readonly canvas: HTMLCanvasElement;
   private program: WebGLProgram | null = null;
   private uloc: Record<string, WebGLUniformLocation | null> = {};
   private sceneTex: WebGLTexture | null = null;
   private scenePx: [number, number] = [1, 1];
   private boxes = new Set<BoxEntry>();
   private rafPending = false;
-  /** The refractor handles ONE shared scene; boxes asking for a different (or
-   * non-uploadable) scene get null from register() and use the CSS fallback. */
   private boundScene: HTMLElement | null = null;
 
-  constructor() {
-    this.glCanvas = document.createElement('canvas');
+  constructor(zIndex = -1) {
+    this.canvas = document.createElement('canvas');
+    this.canvas.setAttribute('aria-hidden', 'true');
+    this.canvas.style.cssText =
+      `position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:${zIndex};`;
     try {
-      const gl = this.glCanvas.getContext('webgl2', {
-        premultipliedAlpha: false,
-        alpha: true,
-        antialias: false,
-        preserveDrawingBuffer: true, // so we can blit (drawImage) the result
-      });
+      const gl = this.canvas.getContext('webgl2', { premultipliedAlpha: true, alpha: true, antialias: false });
       if (!gl) return;
       this.gl = gl;
       if (!this.initProgram()) return;
       this.usable = true;
-      window.addEventListener('scroll', this.onViewChange, { passive: true, capture: true });
-      window.addEventListener('resize', () => this.recaptureScene(), { passive: true });
+      window.addEventListener('scroll', this.requestRender, { passive: true, capture: true });
+      window.addEventListener('resize', this.onResize, { passive: true });
     } catch {
-      /* WebGL2 unavailable → caller falls back */
+      /* no WebGL2 → caller falls back */
     }
   }
 
@@ -173,7 +179,10 @@ export class WebGLRefractor {
     gl.attachShader(p, vs);
     gl.attachShader(p, fs);
     gl.linkProgram(p);
-    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) return false;
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+      console.warn('[liquid-glass] WebGL link error:', gl.getProgramInfoLog(p));
+      return false;
+    }
     this.program = p;
     gl.useProgram(p);
     const buf = gl.createBuffer();
@@ -185,6 +194,7 @@ export class WebGLRefractor {
     for (const n of [
       'u_scene', 'u_disp', 'u_spec', 'u_hasSpec', 'u_scene_px', 'u_box_origin',
       'u_box_size', 'u_pad', 'u_refraction', 'u_blur', 'u_chroma', 'u_sat',
+      'u_radius', 'u_tint', 'u_viewport',
     ]) {
       this.uloc[n] = gl.getUniformLocation(p, n);
     }
@@ -203,9 +213,6 @@ export class WebGLRefractor {
     return sh;
   }
 
-  /** The directly-uploadable pixel source of a scene element, or null. A scene
-   * must be a <canvas>/<img>/<video> — a DOM element would taint the GPU texture
-   * in every browser (security), so WebGL rejects it. */
   private static sceneSource(el: HTMLElement): TexImageSource | null {
     if (el instanceof HTMLCanvasElement && el.width && el.height) return el;
     if (el instanceof HTMLImageElement && el.complete && el.naturalWidth) return el;
@@ -213,41 +220,71 @@ export class WebGLRefractor {
     return null;
   }
 
-  /** Bind the shared scene (first uploadable scene wins). Returns false if the
-   * scene isn't an uploadable source — the caller then uses the CSS fallback,
-   * and the refractor stays usable for other boxes. */
-  private bindScene(el: HTMLElement): boolean {
-    const src = WebGLRefractor.sceneSource(el);
-    if (!src) return false;
-    this.boundScene = el;
-    this.recaptureScene();
-    return true;
+  /** Register a glass box against the shared scene. Returns null (→ caller uses
+   * the CSS fallback) if the scene isn't uploadable or differs from the bound
+   * one. The refractor's `canvas` must be in the DOM (the caller appends it). */
+  register(el: HTMLElement, scene: HTMLElement, getParams: () => RefractorBoxParams): { destroy: () => void; refresh: () => void } | null {
+    if (!this.usable) return null;
+    if (!this.boundScene) {
+      if (!WebGLRefractor.sceneSource(scene)) return null;
+      this.boundScene = scene;
+      this.recaptureScene();
+    } else if (this.boundScene !== scene) {
+      return null;
+    }
+    const entry: BoxEntry = { el, getParams, cached: null, dispTex: null, specTex: null, dispUrl: '', specUrl: null };
+    this.boxes.add(entry);
+    this.refresh(entry);
+    return {
+      refresh: () => this.refresh(entry),
+      destroy: () => {
+        this.boxes.delete(entry);
+        const gl = this.gl;
+        if (gl) {
+          if (entry.dispTex) gl.deleteTexture(entry.dispTex);
+          if (entry.specTex) gl.deleteTexture(entry.specTex);
+        }
+        this.requestRender();
+      },
+    };
   }
 
-  /** Re-upload the bound scene's current pixels (call when it repaints/resizes). */
+  /** Recompute a box's cached params + (re)load its map textures. Cheap; called
+   * on register and when size/options change — NOT per frame. */
+  private refresh(entry: BoxEntry): void {
+    const p = entry.getParams();
+    entry.cached = p;
+    if (p.displacementMapUrl !== entry.dispUrl) {
+      entry.dispUrl = p.displacementMapUrl;
+      this.uploadFromUrl(p.displacementMapUrl, (t) => { entry.dispTex = t; this.requestRender(); });
+    }
+    if (p.specularMapUrl !== entry.specUrl) {
+      entry.specUrl = p.specularMapUrl;
+      if (p.specularMapUrl) this.uploadFromUrl(p.specularMapUrl, (t) => { entry.specTex = t; this.requestRender(); });
+      else entry.specTex = null;
+    }
+    this.requestRender();
+  }
+
   recaptureScene(): void {
     if (!this.gl || !this.boundScene) return;
     const src = WebGLRefractor.sceneSource(this.boundScene);
     if (!src) return;
-    // The scene element covers the viewport (fixed, inset:0); UV is normalised
-    // over it, and box rects are CSS px, so map by viewport CSS size.
     const r = this.boundScene.getBoundingClientRect();
-    this.scenePx = [
-      Math.max(1, r.width || window.innerWidth),
-      Math.max(1, r.height || window.innerHeight),
-    ];
+    this.scenePx = [Math.max(1, r.width || window.innerWidth), Math.max(1, r.height || window.innerHeight)];
     this.sceneTex = this.uploadImage(src, this.sceneTex);
     this.requestRender();
   }
 
-  private uploadImage(
-    src: TexImageSource,
-    reuse: WebGLTexture | null
-  ): WebGLTexture | null {
+  /** Refresh the texture after the app repaints the scene (e.g. animated bg). */
+  refreshScene(): void { this.recaptureScene(); }
+
+  private uploadImage(src: TexImageSource, reuse: WebGLTexture | null): WebGLTexture | null {
     const gl = this.gl!;
     const tex = reuse ?? gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
@@ -256,111 +293,57 @@ export class WebGLRefractor {
     return tex;
   }
 
-  private uploadFromUrl(url: string, onReady: (tex: WebGLTexture | null) => void): void {
+  private uploadFromUrl(url: string, onReady: (t: WebGLTexture | null) => void): void {
     const img = new Image();
-    img.onload = () => { onReady(this.uploadImage(img, null)); this.requestRender(); };
+    img.onload = () => onReady(this.uploadImage(img, null));
     img.onerror = () => onReady(null);
     img.src = url;
   }
 
-  register(
-    el: HTMLElement,
-    scene: HTMLElement,
-    getParams: () => RefractorBoxParams
-  ): { surface: HTMLCanvasElement; destroy: () => void; refresh: () => void } | null {
-    if (!this.usable) return null;
-    // One shared scene: bind the first uploadable one; reject others (they fall
-    // back to the CSS path) without disabling the refractor.
-    if (!this.boundScene) {
-      if (!this.bindScene(scene)) return null;
-    } else if (this.boundScene !== scene) {
-      return null;
-    }
-    const surface = document.createElement('canvas');
-    surface.setAttribute('aria-hidden', 'true');
-    surface.style.cssText =
-      'position:absolute;inset:0;width:100%;height:100%;border-radius:inherit;pointer-events:none;z-index:-1;';
-    const ctx2d = surface.getContext('2d');
-    if (!ctx2d) return null;
-
-    const entry: BoxEntry = {
-      el, surface, ctx2d, getParams,
-      dispTex: null, specTex: null, dispUrl: '', specUrl: null,
-    };
-    this.boxes.add(entry);
-    this.refreshTextures(entry);
-    this.requestRender();
-
-    return {
-      surface,
-      refresh: () => { this.refreshTextures(entry); this.requestRender(); },
-      destroy: () => {
-        this.boxes.delete(entry);
-        const gl = this.gl;
-        if (gl) {
-          if (entry.dispTex) gl.deleteTexture(entry.dispTex);
-          if (entry.specTex) gl.deleteTexture(entry.specTex);
-        }
-        surface.remove();
-      },
-    };
-  }
-
-  private refreshTextures(entry: BoxEntry): void {
-    const p = entry.getParams();
-    if (p.displacementMapUrl !== entry.dispUrl) {
-      entry.dispUrl = p.displacementMapUrl;
-      this.uploadFromUrl(p.displacementMapUrl, (t) => (entry.dispTex = t));
-    }
-    if (p.specularMapUrl !== entry.specUrl) {
-      entry.specUrl = p.specularMapUrl;
-      if (p.specularMapUrl) this.uploadFromUrl(p.specularMapUrl, (t) => (entry.specTex = t));
-      else entry.specTex = null;
-    }
-  }
-
-  private onViewChange = (): void => this.requestRender();
-  /** Public hook so the app can refresh the texture after repainting the scene. */
-  refreshScene(): void {
+  private onResize = (): void => {
     this.recaptureScene();
-  }
+    this.requestRender();
+  };
 
-  requestRender(): void {
+  requestRender = (): void => {
     if (this.rafPending || !this.usable) return;
     this.rafPending = true;
     requestAnimationFrame(() => { this.rafPending = false; this.render(); });
-  }
+  };
 
   private render(): void {
     const gl = this.gl;
     if (!gl || !this.program || !this.sceneTex) return;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const cw = Math.round(vw * dpr);
+    const ch = Math.round(vh * dpr);
+    if (this.canvas.width !== cw || this.canvas.height !== ch) {
+      this.canvas.width = cw;
+      this.canvas.height = ch;
+    }
 
+    gl.viewport(0, 0, cw, ch);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
     gl.useProgram(this.program);
     gl.enable(gl.BLEND);
-    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA); // premultiplied
 
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.sceneTex);
     gl.uniform1i(this.uloc.u_scene, 0);
     gl.uniform2f(this.uloc.u_scene_px, this.scenePx[0], this.scenePx[1]);
+    gl.uniform2f(this.uloc.u_viewport, vw, vh);
 
-    // One render + blit per box. Rects are read in this single rAF pass.
     for (const e of this.boxes) {
-      if (!e.dispTex) continue;
+      if (!e.dispTex || !e.cached) continue;
       const r = e.el.getBoundingClientRect();
-      if (r.width < 1 || r.height < 1) continue;
-      const w = Math.max(1, Math.round(r.width * dpr));
-      const h = Math.max(1, Math.round(r.height * dpr));
-      if (this.glCanvas.width !== w || this.glCanvas.height !== h) {
-        this.glCanvas.width = w;
-        this.glCanvas.height = h;
-      }
-      gl.viewport(0, 0, w, h);
-      gl.clearColor(0, 0, 0, 0);
-      gl.clear(gl.COLOR_BUFFER_BIT);
+      // Cull fully off-screen boxes.
+      if (r.right < 0 || r.bottom < 0 || r.left > vw || r.top > vh || r.width < 1 || r.height < 1) continue;
+      const p = e.cached;
 
-      const p = e.getParams();
       gl.activeTexture(gl.TEXTURE1);
       gl.bindTexture(gl.TEXTURE_2D, e.dispTex);
       gl.uniform1i(this.uloc.u_disp, 1);
@@ -376,16 +359,10 @@ export class WebGLRefractor {
       gl.uniform1f(this.uloc.u_blur, p.blur);
       gl.uniform1f(this.uloc.u_chroma, p.chromaticAberration);
       gl.uniform1f(this.uloc.u_sat, p.saturation / 100);
+      gl.uniform1f(this.uloc.u_radius, p.radius);
+      gl.uniform4f(this.uloc.u_tint, p.tint[0], p.tint[1], p.tint[2], p.tint[3]);
 
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-
-      // Blit the GL result into the element's display canvas.
-      if (e.surface.width !== w || e.surface.height !== h) {
-        e.surface.width = w;
-        e.surface.height = h;
-      }
-      e.ctx2d.clearRect(0, 0, w, h);
-      e.ctx2d.drawImage(this.glCanvas, 0, 0);
     }
   }
 }
