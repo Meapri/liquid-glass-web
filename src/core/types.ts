@@ -1,5 +1,11 @@
 export type LiquidGlassVariant = 'regular' | 'clear' | 'tinted';
-export type LiquidGlassScheme = 'light' | 'dark' | 'auto';
+/**
+ * 'auto' follows the OS color scheme. 'adaptive' follows the CONTENT behind the
+ * element — Apple's Liquid Glass "automatically adapts to what's beneath it":
+ * over dark content it takes a light appearance, over light content a dark one,
+ * so it stays legible. Falls back to OS auto when the backdrop can't be read.
+ */
+export type LiquidGlassScheme = 'light' | 'dark' | 'auto' | 'adaptive';
 export type LiquidGlassQuality = 'high' | 'balanced' | 'low' | 'auto';
 /**
  * Semantic optical context for the glass. Apple doesn't expose numeric blur or

@@ -112,7 +112,7 @@ LiquidInteractive.initAll();
 | `variant` | `'regular'` | `'regular'` \| `'clear'`; legacy `'tinted'` remains for compatibility. Apple guidance maps prominence through `tint`, not an extra variant. |
 | `profile` | `'auto'` | semantic optical context: `'auto'`, `'bar'`, `'control'`, `'card'`, `'panel'`, or `'selection'`. `auto` uses element semantics and geometry. |
 | `preset` | `'auto'` | material intensity: `'auto'`, `'subtle'`, `'balanced'`, `'vivid'`, or `'dramatic'`. `auto` chooses `vivid` for controls/selections and `balanced` elsewhere. |
-| `scheme` | `'auto'` | `'light'` \| `'dark'` \| `'auto'` |
+| `scheme` | `'auto'` | `'light'` \| `'dark'` \| `'auto'` (follows the OS) \| `'adaptive'` (follows the content behind it — light glass with dark labels over light backdrops, dark glass with light labels over dark ones, re-sampled on scroll; falls back to OS when the backdrop can't be read) |
 | `tint` | — | explicit CSS color for prominence; preferred over `variant:'tinted'` |
 | `specular` | `true` | bake the geometry-driven edge light |
 | `specularIntensity` | `0.5` | 0–1 |

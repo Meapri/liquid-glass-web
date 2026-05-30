@@ -85,6 +85,14 @@
   text-shadow: 0 1px 1px rgba(0, 0, 0, 0.42);
 }
 
+/* Adaptive (scheme:'adaptive') flips the label to stay legible against the
+   resolved appearance — dark text on a light glass over light content. The
+   dark-appearance case already keeps the default white label. */
+.liquid-glass[data-adaptive][data-scheme='light'] {
+  color: #1c1c22;
+  text-shadow: 0 1px 1px rgba(255, 255, 255, 0.45);
+}
+
 /* ==========================================================================
    Liquid Glass Animations & Interactions
    ========================================================================== */

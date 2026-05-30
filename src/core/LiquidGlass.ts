@@ -283,6 +283,9 @@ export class LiquidGlass {
   private regenTimer: number | null = null;
   /** Backdrop-aware shadow multiplier (1 = neutral; >1 darker backdrop). */
   private shadowAdapt = 1;
+  /** Resolved light/dark for scheme:'adaptive' (null = fall back to OS). */
+  private resolvedAdaptiveScheme: 'light' | 'dark' | null = null;
+  private scrollRaf = 0;
 
   constructor(element: HTMLElement, options: LiquidGlassOptions = {}) {
     this.element = element;
@@ -348,11 +351,15 @@ export class LiquidGlass {
     // .lg-interactive). The CSS `.liquid-glass::after` consumes the vars.
     if (!this.usesFallback) registerPointerLight(this.element);
 
-    // Sample the backdrop once laid out to set the content-aware shadow.
+    // Sample the backdrop once laid out (content-aware shadow + adaptive scheme).
     if (!this.usesFallback && typeof requestAnimationFrame === 'function') {
       requestAnimationFrame(() => {
-        if (!this.destroyed) this.updateShadowAdapt();
+        if (!this.destroyed) this.adaptToBackdrop();
       });
+    }
+    // An adaptive element must re-read its backdrop as content scrolls under it.
+    if (this.options.scheme === 'adaptive' && !this.usesFallback) {
+      window.addEventListener('scroll', this.onBackdropScroll, { passive: true, capture: true });
     }
   }
 
@@ -481,6 +488,8 @@ export class LiquidGlass {
     if (this.mqlScheme && this.mqlListener) {
       this.mqlScheme.removeEventListener('change', this.mqlListener);
     }
+    window.removeEventListener('scroll', this.onBackdropScroll, { capture: true } as EventListenerOptions);
+    if (this.scrollRaf) cancelAnimationFrame(this.scrollRaf);
     this.filter?.destroy();
     this.filter = null;
     unregisterPointerLight(this.element);
@@ -681,7 +690,7 @@ export class LiquidGlass {
         });
         this.filter.updateSpecular(specUrl, this.currentWidth, this.currentHeight);
       }
-      this.updateShadowAdapt();
+      this.adaptToBackdrop();
     }, RESIZE_DEBOUNCE_MS);
   }
 
@@ -689,6 +698,10 @@ export class LiquidGlass {
     const tint = this.options.tint ?? this.variantTint();
     this.element.style.backgroundColor = tint;
     this.element.dataset.scheme = this.resolveScheme();
+    // Mark adaptive elements so the stylesheet can flip the label color to keep
+    // it legible against the resolved appearance (dark text on light glass,
+    // light text on dark glass).
+    if (this.options.scheme === 'adaptive') this.element.dataset.adaptive = '';
     this.applyEdges();
   }
 
@@ -726,19 +739,50 @@ export class LiquidGlass {
   }
 
   /**
-   * Approximate Apple's content-aware shadow: sample the backdrop luminance
-   * behind the element and bias the shadow opacity — darker/busier content casts
-   * a deeper shadow for separation, a solid light background a fainter one.
+   * Adapt to the content behind the element by sampling its backdrop luminance
+   * (one sample drives both effects):
+   *  - content-aware SHADOW: darker/busier content casts a deeper shadow for
+   *    separation, a solid light background a fainter one;
+   *  - adaptive SCHEME (`scheme: 'adaptive'`): Apple's glass "automatically
+   *    adapts to what's beneath it" — a light appearance over dark content, a
+   *    dark one over light content, so it stays legible.
    * Resolvable solid backgrounds adapt; gradients/images fall back to neutral.
    */
-  private updateShadowAdapt(): void {
-    if (!this.options.edges || this.usesFallback) return;
+  private adaptToBackdrop(): void {
+    if (this.usesFallback) return;
     const lum = this.sampleBackdropLuminance();
-    const next = lum == null ? 1 : 1.4 - lum * 0.8; // dark→1.4, light→0.6
-    if (Math.abs(next - this.shadowAdapt) < 0.03) return;
-    this.shadowAdapt = next;
-    this.applyEdges();
+
+    if (this.options.edges) {
+      const next = lum == null ? 1 : 1.4 - lum * 0.8; // dark→1.4, light→0.6
+      if (Math.abs(next - this.shadowAdapt) >= 0.03) {
+        this.shadowAdapt = next;
+        this.applyEdges();
+      }
+    }
+
+    if (this.options.scheme === 'adaptive') {
+      let next: 'light' | 'dark' | null;
+      // Match the backdrop (like iOS controls): a light appearance over light
+      // content (with dark labels), a dark appearance over dark content (light
+      // labels). The label flip is handled by the [data-adaptive] CSS.
+      if (lum == null) next = null; // can't read backdrop → fall back to OS
+      else if (lum >= 0.55) next = 'light'; // light backdrop → light glass
+      else if (lum <= 0.45) next = 'dark'; // dark backdrop → dark glass
+      else next = this.resolvedAdaptiveScheme; // hysteresis band — keep current
+      if (next !== this.resolvedAdaptiveScheme) {
+        this.resolvedAdaptiveScheme = next;
+        this.applyTint(); // re-resolves scheme → tint, dataset, edges
+      }
+    }
   }
+
+  private onBackdropScroll = (): void => {
+    if (this.scrollRaf) return;
+    this.scrollRaf = requestAnimationFrame(() => {
+      this.scrollRaf = 0;
+      if (!this.destroyed) this.adaptToBackdrop();
+    });
+  };
 
   private sampleBackdropLuminance(): number | null {
     const r = this.element.getBoundingClientRect();
@@ -774,9 +818,11 @@ export class LiquidGlass {
   }
 
   private resolveScheme(): 'light' | 'dark' {
-    if (this.options.scheme === 'light' || this.options.scheme === 'dark') {
-      return this.options.scheme;
-    }
+    const s = this.options.scheme;
+    if (s === 'light' || s === 'dark') return s;
+    // adaptive resolves from the sampled backdrop; until sampled (or unreadable)
+    // it falls back to OS auto, same as 'auto'.
+    if (s === 'adaptive' && this.resolvedAdaptiveScheme) return this.resolvedAdaptiveScheme;
     if (typeof window.matchMedia === 'function') {
       return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
     }
