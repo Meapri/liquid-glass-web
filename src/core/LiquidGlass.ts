@@ -84,6 +84,7 @@ const DEFAULT_OPTIONS: ResolvedOptions = {
   specular: true,
   specularIntensity: 0.5,
   edges: true,
+  refractBackground: null,
   applyRadius: true,
   mapPixelRatio: 2,
   quality: 'auto',
@@ -280,6 +281,10 @@ export class LiquidGlass {
   private destroyed = false;
   private suspended = false;
   private usesFallback = false;
+  /** True when prefers-reduced-transparency is honored — keep the glass calm. */
+  private reducedTransparency = false;
+  /** Injected child layer for the enhanced fallback (specular rim / refraction). */
+  private fxLayer: HTMLElement | null = null;
   private regenTimer: number | null = null;
   /** Backdrop-aware shadow multiplier (1 = neutral; >1 darker backdrop). */
   private shadowAdapt = 1;
@@ -306,6 +311,13 @@ export class LiquidGlass {
     if (this.options.applyRadius) {
       element.style.borderRadius = `${this.computedRadius()}px`;
     }
+
+    // Reduced-transparency users get the calmest path: a plain frosted fallback
+    // with none of the pointer light / adaptive / specular enhancements.
+    this.reducedTransparency =
+      this.options.respectReducedMotion &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-transparency: reduce)').matches;
 
     // Decide the rendering path once.
     this.usesFallback = this.shouldFallback();
@@ -348,17 +360,20 @@ export class LiquidGlass {
     }
 
     // Pointer-tracked edge light for every glass element (core, not just
-    // .lg-interactive). The CSS `.liquid-glass::after` consumes the vars.
-    if (!this.usesFallback) registerPointerLight(this.element);
+    // .lg-interactive). The CSS `.liquid-glass::after` consumes the vars — pure
+    // CSS/JS, so it works on the Safari/Firefox fallback too.
+    if (!this.reducedTransparency) registerPointerLight(this.element);
 
     // Sample the backdrop once laid out (content-aware shadow + adaptive scheme).
-    if (!this.usesFallback && typeof requestAnimationFrame === 'function') {
+    // Also runs on the fallback path: luminance sampling is plain DOM, so Safari
+    // gets adaptive light/dark and content-aware shadows too.
+    if (!this.reducedTransparency && typeof requestAnimationFrame === 'function') {
       requestAnimationFrame(() => {
         if (!this.destroyed) this.adaptToBackdrop();
       });
     }
     // An adaptive element must re-read its backdrop as content scrolls under it.
-    if (this.options.scheme === 'adaptive' && !this.usesFallback) {
+    if (this.options.scheme === 'adaptive' && !this.reducedTransparency) {
       window.addEventListener('scroll', this.onBackdropScroll, { passive: true, capture: true });
     }
   }
@@ -419,7 +434,7 @@ export class LiquidGlass {
    * this on layout and on scroll; call it manually when the content *behind* a
    * stationary adaptive element changes (a theme swap, a background image load,
    * a recolored hero) and you want the glass to glide to the new appearance.
-   * No-op for the SVG-less fallback path.
+   * Works on the fallback path too; only the reduced-transparency path opts out.
    */
   syncToBackdrop(): void {
     this.adaptToBackdrop();
@@ -467,6 +482,7 @@ export class LiquidGlass {
   suspend(): void {
     if (this.suspended || this.destroyed) return;
     this.suspended = true;
+    this.removeFallbackFx();
     this.element.style.backdropFilter = 'none';
     (this.element.style as WebkitStyle).webkitBackdropFilter = 'none';
   }
@@ -502,6 +518,7 @@ export class LiquidGlass {
     }
     window.removeEventListener('scroll', this.onBackdropScroll, { capture: true } as EventListenerOptions);
     if (this.scrollRaf) cancelAnimationFrame(this.scrollRaf);
+    this.removeFallbackFx();
     this.filter?.destroy();
     this.filter = null;
     unregisterPointerLight(this.element);
@@ -535,12 +552,101 @@ export class LiquidGlass {
         : this.options.fallbackFilter;
     this.element.style.backdropFilter = css;
     (this.element.style as WebkitStyle).webkitBackdropFilter = css;
+    this.installFallbackFx();
   }
 
   private profiledFallbackFilter(): string {
     const blur = Math.max(4, Math.min(22, this.effectiveBlur() * 1.45));
     const saturation = Math.max(1, Math.min(2, this.options.saturation / 100));
     return `blur(${roundCss(blur)}px) saturate(${roundCss(saturation)})`;
+  }
+
+  /** Enhancements active on the fallback path (Safari/Firefox), but not for the
+   * deliberately-calm reduced-transparency path. */
+  private fallbackEnhanced(): boolean {
+    return this.usesFallback && !this.reducedTransparency;
+  }
+
+  /**
+   * Bring the Safari/Firefox fallback as close to Liquid Glass as the platform
+   * allows. Two layers, injected as a single inset child behind the content:
+   *   • refraction — if `refractBackground` is set, a copy of the page's fixed
+   *     backdrop displaced by the SAME SVG filter, applied as a regular
+   *     `filter:` (which Safari supports). This is real lensing of that
+   *     backdrop. Otherwise…
+   *   • specular rim — the baked rim/gloss PNG, screen-blended over the frost,
+   *     restoring the crisp light edge the SVG filter would have added.
+   * The pointer light, adaptive scheme and content-aware shadow are already
+   * enabled on this path; this adds the parts that lived inside the filter.
+   */
+  private installFallbackFx(): void {
+    this.removeFallbackFx();
+    if (!this.fallbackEnhanced() || this.suspended) return;
+
+    const layer = document.createElement('div');
+    layer.setAttribute('aria-hidden', 'true');
+    // z-index:-1 keeps it above the element's tint but below the in-flow
+    // content (legible text), inside the element's isolated stacking context.
+    layer.style.cssText =
+      'position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:-1;';
+
+    if (this.options.refractBackground) {
+      const disp = getDisplacementMap({
+        width: this.currentWidth,
+        height: this.currentHeight,
+        radius: this.computedRadius(),
+        thickness: this.computedThickness(),
+        pixelRatio: this.displacementDpr(),
+        refraction: this.profiledRefraction(),
+      });
+      this.filter = new FilterChain({
+        refraction: this.effectiveRefraction(),
+        chromaticAberration: 0, // single pass on the fallback path
+        blur: this.effectiveBlur(),
+        saturation: this.options.saturation,
+        width: this.currentWidth,
+        height: this.currentHeight,
+        displacementMapUrl: disp.url,
+        displacementPadding: disp.padding,
+        specularMapUrl: this.options.specular ? this.specularMapUrl() : null,
+        root: this.root,
+      });
+      // The replicated backdrop fully paints the body, so drop the element's own
+      // (un-refracted) backdrop blur to avoid a muddy double frost.
+      this.element.style.backdropFilter = 'none';
+      (this.element.style as WebkitStyle).webkitBackdropFilter = 'none';
+      layer.style.background = this.options.refractBackground;
+      layer.style.backgroundSize = 'cover';
+      (layer.style as CSSStyleDeclaration & { webkitFilter?: string }).webkitFilter =
+        this.filter.url;
+      layer.style.filter = this.filter.url;
+    } else if (this.options.specular) {
+      // Specular rim only — screen-blend the baked highlight over the frost.
+      layer.style.backgroundImage = `url("${this.specularMapUrl()}")`;
+      layer.style.backgroundSize = '100% 100%';
+      layer.style.mixBlendMode = 'screen';
+    } else {
+      return; // nothing to add
+    }
+
+    this.element.insertBefore(layer, this.element.firstChild);
+    this.fxLayer = layer;
+  }
+
+  private removeFallbackFx(): void {
+    this.fxLayer?.remove();
+    this.fxLayer = null;
+  }
+
+  private specularMapUrl(): string {
+    return getSpecularMap({
+      width: this.currentWidth,
+      height: this.currentHeight,
+      radius: this.computedRadius(),
+      thickness: this.computedThickness(),
+      pixelRatio: this.specularDpr(),
+      intensity: this.profiledSpecularIntensity(),
+    });
   }
 
   private setupLazy(): void {
@@ -665,6 +771,7 @@ export class LiquidGlass {
   private rebuild(): void {
     this.filter?.destroy();
     this.filter = null;
+    this.removeFallbackFx();
     this.usesFallback = this.shouldFallback();
     if (this.usesFallback) {
       this.applyFallback();
@@ -761,7 +868,7 @@ export class LiquidGlass {
    * Resolvable solid backgrounds adapt; gradients/images fall back to neutral.
    */
   private adaptToBackdrop(): void {
-    if (this.usesFallback) return;
+    if (this.reducedTransparency) return;
     const lum = this.sampleBackdropLuminance();
 
     if (this.options.edges) {
@@ -953,6 +1060,7 @@ export class LiquidGlass {
       specular: opts.specular ?? DEFAULT_OPTIONS.specular,
       specularIntensity: opts.specularIntensity ?? DEFAULT_OPTIONS.specularIntensity,
       edges: opts.edges ?? DEFAULT_OPTIONS.edges,
+      refractBackground: opts.refractBackground ?? DEFAULT_OPTIONS.refractBackground,
       applyRadius: opts.applyRadius ?? DEFAULT_OPTIONS.applyRadius,
       mapPixelRatio: opts.mapPixelRatio ?? DEFAULT_OPTIONS.mapPixelRatio,
       quality: opts.quality ?? DEFAULT_OPTIONS.quality,
@@ -981,6 +1089,7 @@ export class LiquidGlass {
       specular: o.specular,
       specularIntensity: o.specularIntensity,
       edges: o.edges,
+      refractBackground: o.refractBackground ?? undefined,
       applyRadius: o.applyRadius,
       mapPixelRatio: o.mapPixelRatio,
       quality: o.quality,

@@ -180,6 +180,7 @@ LiquidInteractive.initAll();
 | `lazyMargin` | `'200px'` | root-margin for the lazy observer |
 | `root` | auto | tree scope for the shared `<svg defs>`; auto-detected from `getRootNode()` so it works inside a Shadow DOM |
 | `fallbackFilter` | profile-aware | CSS `backdrop-filter` used on non-Chromium / `quality:'low'` / reduced-transparency. Leave unset to derive blur/saturation from the resolved profile; pass a string to override. |
+| `refractBackground` | — | opt-in real refraction for the Safari/Firefox fallback: a CSS background equal to the page's *fixed* backdrop, displaced inside the glass via a regular `filter:`. Ignored on Chromium. See [Browser support](#browser-support). |
 | `respectReducedMotion` | `true` | fall back to the cheap filter when `prefers-reduced-transparency` is set |
 
 ## Instance API
@@ -426,9 +427,49 @@ glass.resume();   // shown again → instant
 
 ## Browser support
 
-Chromium only for real SVG displacement inside `backdrop-filter`. Safari,
-Firefox, `quality: 'low'`, and `prefers-reduced-transparency` fall back to a
-profile-aware CSS `backdrop-filter` derived from the resolved blur/saturation.
+**Full lensing — Chromium.** Real refraction of an arbitrary backdrop needs an
+SVG `feDisplacementMap` running *inside* `backdrop-filter`, and only Chromium
+supports SVG filter references there. There is also no web API to read the
+composited backdrop pixels, so the lensing can't be reproduced manually in
+WebGL/Canvas for arbitrary content. So on Chromium you get the complete material.
+
+**Safari / Firefox — enhanced fallback.** These engines can't run an SVG filter
+in `backdrop-filter`, so the *arbitrary-backdrop* lens is unavailable. But
+everything else is — and the fallback now ships it, because it's all plain
+CSS/JS, not the SVG filter:
+
+- frosted `backdrop-filter: blur() saturate()` (profile-aware), plus tint;
+- the baked **specular rim** PNG, screen-blended as an overlay (the crisp light
+  edge the filter would have added);
+- the pointer-tracked **edge light** and press **illumination**;
+- **adaptive** light/dark (`scheme:'adaptive'`) + content-aware shadow;
+- all of [Motion & transitions](#motion--transitions).
+
+So Safari reads as Liquid Glass — only the literal backdrop lens-distortion is
+missing.
+
+**Opt-in real refraction in Safari — `refractBackground`.** When the backdrop is
+a layer you control (a fixed hero image or gradient), tell the engine what it is
+and it gets true lensing even in Safari: a copy of that background is placed
+inside the glass and displaced by the same map via a regular `filter:` (which
+WebKit supports).
+
+```ts
+new LiquidGlass(el, {
+  // a CSS background identical to the page's FIXED background
+  refractBackground: 'url(/hero.jpg) center/cover fixed',
+});
+```
+
+Use `background-attachment: fixed` values so the replicated copy lines up with
+the real page background. Ignored on Chromium (the real backdrop is already
+refracted). You can preview this path on any browser by forcing the fallback
+with `quality: 'low'` (see the "Safari path" card in the demo).
+
+**Reduced transparency.** `prefers-reduced-transparency: reduce` takes the
+calmest path: a plain profile-aware frost with none of the above enhancements
+(honoring the user's preference). `quality: 'low'` also uses the fallback but
+keeps the enhancements.
 
 ## References
 

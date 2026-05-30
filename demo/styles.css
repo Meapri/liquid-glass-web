@@ -665,3 +665,19 @@ input[type='text'] {
   transition: background-color 700ms ease;
 }
 .adapt-stage.is-light { background: #f3f3f7; }
+
+/* Safari fallback showcase — replicated-background refraction */
+.fallback-stage {
+  width: 100%;
+  height: 130px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #3a1c71, #d76d77, #ffaf7b);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.fallback-pill {
+  padding: 18px 30px;
+  font-size: 15px;
+  font-weight: 600;
+}
